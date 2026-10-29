@@ -9,7 +9,22 @@ It looks for phone numbers in two places:
 
 It ignores review text, so a number a customer typed in a review won't be picked up.
 
-## Setup (Mac)
+## The app (easiest)
+
+Double-click **Start Scanner.command**. The first time, it sets itself up (a couple of minutes).
+Then a page opens in your browser where you can:
+
+- **Search Amazon** for a product word, or **paste store links**
+- Press **Start scan** and watch stores and phone numbers appear
+- Press **Stop** anytime (everything found so far is kept)
+- Filter the list, copy numbers, and **Download** a spreadsheet (all stores, or only ones with a phone)
+
+Keep the black Terminal window open while you use the app. Close it to quit.
+If macOS blocks it, go to System Settings → Privacy & Security, scroll down, and click **Open Anyway**.
+
+## Command line
+
+### Setup (Mac)
 
 ```bash
 cd amazon-seller-scraper
@@ -18,7 +33,7 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-## Use
+### Use
 
 ```bash
 # 1. You already have seller IDs or seller-page URLs (one per line, any mix)
@@ -32,12 +47,12 @@ python scraper.py search "micro sd card" --pages 3 -o leads.csv
 ```
 
 - A Chrome window opens and stays logged in between runs (profile saved in `.browser-profile/`).
-- If Amazon shows a CAPTCHA, solve it in the window and press Enter in the terminal.
+- If Amazon shows a CAPTCHA, solve it in the Chrome window; the scan continues by itself.
 - Results are written row by row. Press Ctrl+C anytime; re-running the same command skips sellers already in the CSV.
 - Waits 4–9 seconds between pages by default (`--min-delay` / `--max-delay`). Going faster gets you CAPTCHAs.
 - Other marketplaces: `--domain www.amazon.co.uk`, `--domain www.amazon.de`, etc.
 
-### CSV `status` column
+#### CSV `status` column
 | status | meaning |
 |---|---|
 | `ok` | at least one phone number found |

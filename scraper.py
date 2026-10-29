@@ -16,7 +16,6 @@ import csv
 import json
 import random
 import re
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,13 +32,18 @@ CSV_FIELDS = ["seller_id", "status", "seller_name", "business_name", "phones", "
 PROFILE_DIR = Path(__file__).parent / ".browser-profile"
 
 
+class Stopped(Exception):
+    """Raised inside a scan when the user presses Stop."""
+
+
 class Browser:
     """A persistent Chromium profile so cookies (and any CAPTCHA you solve) carry over between runs."""
 
     def __init__(self, domain: str, headless: bool, min_delay: float, max_delay: float,
-                 save_html: Path | None):
+                 save_html: Path | None, log=print, should_stop=lambda: False):
         from playwright.sync_api import sync_playwright
 
+        self.log, self.should_stop = log, should_stop
         self.domain = domain
         self.headless = headless
         self.min_delay, self.max_delay = min_delay, max_delay
@@ -52,11 +56,25 @@ class Browser:
         self.page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         self._last = 0.0
 
+    def sleep(self, seconds: float) -> None:
+        end = time.time() + seconds
+        while time.time() < end:
+            if self.should_stop():
+                raise Stopped
+            time.sleep(min(0.5, max(0, end - time.time())))
+
+    def _wait_for_captcha_solved(self, timeout: float = 300) -> str | None:
+        end = time.time() + timeout
+        while time.time() < end:
+            self.sleep(3)
+            html = self.page.content()
+            if not is_captcha(html):
+                return html
+        return None
+
     def get(self, url: str, name: str = "") -> str | None:
         """Load a page politely; returns HTML, or None if Amazon keeps showing a bot check."""
-        wait = random.uniform(self.min_delay, self.max_delay) - (time.time() - self._last)
-        if wait > 0:
-            time.sleep(wait)
+        self.sleep(random.uniform(self.min_delay, self.max_delay) - (time.time() - self._last))
         self._last = time.time()
 
         for attempt in range(3):
@@ -65,22 +83,26 @@ class Browser:
                 self.page.wait_for_timeout(1500)
                 html = self.page.content()
             except Exception as e:  # network hiccup, timeout
-                print(f"  ! load failed ({e.__class__.__name__}), retrying", file=sys.stderr)
-                time.sleep(10 * (attempt + 1))
+                self.log(f"  ! load failed ({e.__class__.__name__}), retrying")
+                self.sleep(10 * (attempt + 1))
                 continue
+
+            if is_captcha(html):
+                if self.headless:
+                    self.log("  ! Amazon showed a CAPTCHA; backing off 2 minutes "
+                             "(run without --headless to solve it yourself)")
+                    self.sleep(120)
+                    continue
+                self.log("  ! Amazon showed a CAPTCHA. Solve it in the Chrome window; "
+                         "the scan continues by itself.")
+                html = self._wait_for_captcha_solved()
+                if html is None:
+                    continue
 
             if self.save_html and name:
                 self.save_html.mkdir(parents=True, exist_ok=True)
                 (self.save_html / f"{name}.html").write_text(html, encoding="utf-8")
-
-            if not is_captcha(html):
-                return html
-            if self.headless:
-                print("  ! Amazon showed a CAPTCHA; backing off 2 minutes "
-                      "(run without --headless to solve it yourself)", file=sys.stderr)
-                time.sleep(120)
-            else:
-                input("  ! Amazon showed a CAPTCHA. Solve it in the browser window, then press Enter... ")
+            return html
         return None
 
     def close(self):
@@ -116,9 +138,9 @@ def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
             html = b.get(url, name=f"asin-{asin}")
             if html:
                 found += extract_seller_ids(html)
-        new = [s for s in found if s not in sellers]
+        new = [s for s in dict.fromkeys(found) if s not in sellers]
         sellers.update(dict.fromkeys(new))
-        print(f"[{i}/{len(asins)}] {asin}: {len(new)} new sellers ({len(sellers)} total)")
+        b.log(f"[{i}/{len(asins)}] product {asin}: {len(new)} new stores ({len(sellers)} total)")
     return list(sellers)
 
 
@@ -129,18 +151,18 @@ def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
         if not html:
             break
         page_asins = extract_asins(html)
-        print(f"search page {p}: {len(page_asins)} products")
+        b.log(f"Search page {p}: {len(page_asins)} products")
         if not page_asins:
             break
         asins.update(dict.fromkeys(page_asins))
     return discover_from_asins(b, list(asins))
 
 
-def scrape_sellers(b: Browser, seller_ids: list[str], out: Path) -> None:
+def scrape_sellers(b: Browser, seller_ids: list[str], out: Path, on_progress=None) -> None:
     done = already_done(out)
     todo = [s for s in seller_ids if s not in done]
     if len(todo) < len(seller_ids):
-        print(f"Skipping {len(seller_ids) - len(todo)} sellers already in {out}")
+        b.log(f"Skipping {len(seller_ids) - len(todo)} stores already checked")
 
     new_file = not out.exists() or out.stat().st_size == 0
     with_phone = 0
@@ -168,8 +190,10 @@ def scrape_sellers(b: Browser, seller_ids: list[str], out: Path) -> None:
             f.flush()
             with_phone += bool(info.phones)
             phones = ", ".join(info.phones) or "-"
-            print(f"[{i}/{len(todo)}] {sid} {info.seller_name or '?'}: {status} {phones}")
-    print(f"\nDone. {with_phone}/{len(todo)} sellers had a phone number. Results: {out}")
+            b.log(f"[{i}/{len(todo)}] {sid} {info.seller_name or '?'}: {status} {phones}")
+            if on_progress:
+                on_progress(i, len(todo), with_phone)
+    b.log(f"Done. {with_phone}/{len(todo)} stores had a phone number.")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -211,7 +235,7 @@ def main(argv: list[str] | None = None) -> None:
             ids = discover_from_search(b, args.query, args.pages)
         print(f"{len(ids)} sellers to check\n")
         scrape_sellers(b, ids, Path(args.out))
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, Stopped):
         print("\nStopped. Re-run the same command to resume where you left off.")
     finally:
         b.close()
