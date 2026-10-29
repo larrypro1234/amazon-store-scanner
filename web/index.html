@@ -82,13 +82,23 @@
   .none { color: var(--muted); }
   .small { color: var(--muted); font-size: 12px; }
   .empty { text-align: center; color: var(--muted); padding: 40px 10px; }
+  .top { display: flex; justify-content: space-between; align-items: start; gap: 16px; flex-wrap: wrap; }
+  .update { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
   .err { color: var(--bad); font-size: 14px; margin-top: 10px; min-height: 1em; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Amazon Store Scanner</h1>
-  <p class="sub">Finds Amazon stores and pulls out the ones that list a phone number.</p>
+  <div class="top">
+    <div>
+      <h1>Amazon Store Scanner</h1>
+      <p class="sub">Finds Amazon stores and pulls out the ones that list a phone number.</p>
+    </div>
+    <div class="update">
+      <span class="small" id="version"></span>
+      <button class="primary" id="update-btn" hidden>Update</button>
+    </div>
+  </div>
 
   <div class="grid">
     <div class="card">
@@ -255,6 +265,41 @@ $("rows").onclick = e => {
   b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1200);
 };
 
+async function checkVersion() {
+  try {
+    const v = await (await fetch("/api/version")).json();
+    $("version").textContent = v.available ? `Version ${v.current} · new version ${v.latest} ready`
+                                           : `Version ${v.current}${v.latest ? " · up to date" : ""}`;
+    $("update-btn").hidden = !v.available;
+    return v;
+  } catch { return null; }
+}
+
+$("update-btn").onclick = async () => {
+  const btn = $("update-btn");
+  const before = (await checkVersion())?.boot;
+  btn.disabled = true; btn.textContent = "Updating…";
+  $("version").textContent = "Downloading the new version…";
+  const res = await fetch("/api/update", {method: "POST"});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    $("version").textContent = data.error || "Update failed.";
+    btn.disabled = false; btn.textContent = "Update";
+    return;
+  }
+  $("version").textContent = "Restarting…";
+  for (let i = 0; i < 60; i++) {  // wait for the app to come back, then reload the page
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const v = await (await fetch("/api/version")).json();
+      if (v.boot !== before) { location.reload(); return; }
+    } catch {}
+  }
+  $("version").textContent = "Restart took too long. Open Amazon Scanner again.";
+};
+
+checkVersion();
+setInterval(checkVersion, 30 * 60 * 1000);
 startPolling();
 </script>
 </body>

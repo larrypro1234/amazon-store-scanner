@@ -6,7 +6,9 @@ Double-click "Start Scanner.command" (or run `python app.py`); it opens the app 
 from __future__ import annotations
 
 import csv
+import os
 import socket
+import sys
 import threading
 import webbrowser
 from collections import deque
@@ -16,12 +18,14 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 import scraper
+import updater
 
 HERE = Path(__file__).parent
 LEADS = HERE / "leads.csv"
 PORT = 8791  # first choice; another free port is used if something else has it
 
 app = Flask(__name__, static_folder=None)
+BOOT_ID = f"{os.getpid()}-{datetime.now().timestamp()}"  # changes on every restart
 
 
 class Scan:
@@ -164,9 +168,32 @@ def free_port(preferred: int) -> int:
             return s.getsockname()[1]
 
 
+@app.get("/api/version")
+def version():
+    return jsonify(updater.check() | {"boot": BOOT_ID})
+
+
+@app.post("/api/update")
+def update():
+    if scan.running:
+        return jsonify(error="Stop the scan first, then update."), 409
+    try:
+        new_version = updater.install()
+    except Exception as e:
+        return jsonify(error=f"Update failed: {e}"), 500
+
+    def restart():
+        os.environ["SCANNER_NO_BROWSER"] = "1"  # the open page reloads itself
+        os.execv(sys.executable, [sys.executable, str(HERE / "app.py")])
+
+    threading.Timer(1.0, restart).start()
+    return jsonify(ok=True, version=new_version)
+
+
 if __name__ == "__main__":
     port = free_port(PORT)
     url = f"http://127.0.0.1:{port}"
     print(f"Amazon Store Scanner is running at {url}\nKeep this window open. Close it to quit.")
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    if not os.environ.pop("SCANNER_NO_BROWSER", None):
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
