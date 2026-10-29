@@ -268,8 +268,10 @@ $("rows").onclick = e => {
 async function checkVersion() {
   try {
     const v = await (await fetch("/api/version")).json();
-    $("version").textContent = v.available ? `Version ${v.current} · new version ${v.latest} ready`
-                                           : `Version ${v.current}${v.latest ? " · up to date" : ""}`;
+    const label = (num, name) => `Version ${num}${name ? ` “${name}”` : ""}`;
+    $("version").textContent = v.available
+      ? `${label(v.current, v.name)} · new: ${label(v.latest, v.latest_name)}`
+      : `${label(v.current, v.name)}${v.latest ? " · up to date" : ""}`;
     $("update-btn").hidden = !v.available;
     return v;
   } catch { return null; }

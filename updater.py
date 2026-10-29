@@ -36,20 +36,33 @@ def _parse(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.strip().split(".") if x.isdigit())
 
 
+def _split(text: str) -> tuple[str, str]:
+    """VERSION file: first line is the number, second line (optional) is the version's name."""
+    lines = [l.strip() for l in text.strip().splitlines()] + [""]
+    return lines[0], lines[1]
+
+
 def current_version() -> str:
+    return _current()[0]
+
+
+def _current() -> tuple[str, str]:
     try:
-        return (HERE / "VERSION").read_text().strip()
+        return _split((HERE / "VERSION").read_text())
     except FileNotFoundError:
-        return "0"
+        return "0", ""
 
 
 def check() -> dict:
-    current = current_version()
+    current, name = _current()
+    info = {"current": current, "name": name, "latest": None, "latest_name": "", "available": False}
     try:
-        latest = _fetch(f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/VERSION", timeout=10).decode().strip()
+        text = _fetch(f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/VERSION", timeout=10).decode()
     except Exception as e:
-        return {"current": current, "latest": None, "available": False, "error": str(e)}
-    return {"current": current, "latest": latest, "available": _parse(latest) > _parse(current)}
+        return info | {"error": str(e)}
+    latest, latest_name = _split(text)
+    return info | {"latest": latest, "latest_name": latest_name,
+                   "available": _parse(latest) > _parse(current)}
 
 
 def install() -> str:
