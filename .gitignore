@@ -1,0 +1,5 @@
+.browser-profile/
+__pycache__/
+*.csv
+pages/
+.venv/
