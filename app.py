@@ -1,11 +1,12 @@
 """Amazon Store Scanner: a local web app around scraper.py.
 
-Double-click "Start Scanner.command" (or run `python app.py`); it opens http://127.0.0.1:8765.
+Double-click "Start Scanner.command" (or run `python app.py`); it opens the app in your browser.
 """
 
 from __future__ import annotations
 
 import csv
+import socket
 import threading
 import webbrowser
 from collections import deque
@@ -18,7 +19,7 @@ import scraper
 
 HERE = Path(__file__).parent
 LEADS = HERE / "leads.csv"
-PORT = 8765
+PORT = 8791  # first choice; another free port is used if something else has it
 
 app = Flask(__name__, static_folder=None)
 
@@ -153,8 +154,19 @@ def download():
     return send_file(out, as_attachment=True, download_name=name)
 
 
+def free_port(preferred: int) -> int:
+    with socket.socket() as s:
+        try:
+            s.bind(("127.0.0.1", preferred))
+            return preferred
+        except OSError:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+
 if __name__ == "__main__":
-    url = f"http://127.0.0.1:{PORT}"
+    port = free_port(PORT)
+    url = f"http://127.0.0.1:{port}"
     print(f"Amazon Store Scanner is running at {url}\nKeep this window open. Close it to quit.")
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    app.run(host="127.0.0.1", port=PORT, debug=False, threaded=True)
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
