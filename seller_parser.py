@@ -22,6 +22,8 @@ CAPTCHA_MARKERS = (
     "/errors/validateCaptcha",
     "Enter the characters you see below",
     "Type the characters you see in this image",
+    "make sure you're not a robot",
+    "Click the button below to continue shopping",
 )
 
 
@@ -51,7 +53,8 @@ class SellerInfo:
 
 
 def is_captcha(html: str) -> bool:
-    return any(m in html for m in CAPTCHA_MARKERS)
+    low = html.lower()
+    return any(m.lower() in low for m in CAPTCHA_MARKERS)
 
 
 def extract_seller_ids(html: str) -> list[str]:
@@ -69,6 +72,9 @@ def extract_asins(html: str) -> list[str]:
     for el in soup.select("[data-asin]"):
         asin = el.get("data-asin", "").strip()
         if re.fullmatch(r"[A-Z0-9]{10}", asin):
+            seen.setdefault(asin, None)
+    if not seen:  # layout without data-asin attributes: fall back to product links
+        for asin in re.findall(r"/(?:dp|gp/product)/([A-Z0-9]{10})(?=[/?\"'&])", html):
             seen.setdefault(asin, None)
     return list(seen)
 

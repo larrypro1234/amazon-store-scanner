@@ -55,3 +55,13 @@ def test_extract_ids():
             '<a href="/gp/aag/main?smid=A3XYZ12345ABCD">y</a><a href="/sp?seller=A21AQ316WNX0L1">z</a>')
     assert extract_seller_ids(html) == ["A21AQ316WNX0L1", "A3XYZ12345ABCD"]
     assert extract_asins('<div data-asin="B0FBW3483C"></div><div data-asin=""></div>') == ["B0FBW3483C"]
+
+
+def test_continue_shopping_interstitial_counts_as_bot_check():
+    assert is_captcha("<p>Click the button below to continue shopping</p>")
+    assert is_captcha("Sorry, we just need to make sure you're not a robot.")
+
+
+def test_asins_from_links_when_no_data_asin():
+    html = '<a href="/Some-Case/dp/B0CASE0001/ref=sr_1_1">a</a><a href="/gp/product/B0CASE0002?th=1">b</a>'
+    assert extract_asins(html) == ["B0CASE0001", "B0CASE0002"]

@@ -72,7 +72,15 @@ class Browser:
                 return html
         return None
 
-    def get(self, url: str, name: str = "") -> str | None:
+    def debug_snapshot(self, name: str) -> Path:
+        """Save a picture and the HTML of what the browser shows right now."""
+        out = Path(__file__).parent / "debug"
+        out.mkdir(exist_ok=True)
+        (out / f"{name}.html").write_text(self.page.content(), encoding="utf-8")
+        self.page.screenshot(path=str(out / f"{name}.png"))
+        return out / f"{name}.png"
+
+    def get(self, url: str, name: str = "", wait_for: str | None = None) -> str | None:
         """Load a page politely; returns HTML, or None if Amazon keeps showing a bot check."""
         self.sleep(random.uniform(self.min_delay, self.max_delay) - (time.time() - self._last))
         self._last = time.time()
@@ -81,6 +89,11 @@ class Browser:
             try:
                 self.page.goto(url, wait_until="domcontentloaded", timeout=45_000)
                 self.page.wait_for_timeout(1500)
+                if wait_for:
+                    try:
+                        self.page.wait_for_selector(wait_for, timeout=10_000)
+                    except Exception:
+                        pass  # checked by the caller
                 html = self.page.content()
             except Exception as e:  # network hiccup, timeout
                 self.log(f"  ! load failed ({e.__class__.__name__}), retrying")
@@ -147,12 +160,16 @@ def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
 def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
     asins: dict[str, None] = {}
     for p in range(1, pages + 1):
-        html = b.get(f"https://{b.domain}/s?k={quote_plus(query)}&page={p}", name=f"search-{p}")
+        html = b.get(f"https://{b.domain}/s?k={quote_plus(query)}&page={p}", name=f"search-{p}",
+                     wait_for="[data-asin], [data-component-type='s-search-result']")
         if not html:
             break
         page_asins = extract_asins(html)
         b.log(f"Search page {p}: {len(page_asins)} products")
         if not page_asins:
+            pic = b.debug_snapshot(f"search-page-{p}")
+            b.log(f"  ! No products on this page. Amazon's page title was: {b.page.title()!r}. "
+                  f"Saved a picture of it: {pic}")
             break
         asins.update(dict.fromkeys(page_asins))
     return discover_from_asins(b, list(asins))
