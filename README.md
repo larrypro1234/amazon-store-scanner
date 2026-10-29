@@ -20,6 +20,7 @@ Then a page opens in your browser where you can:
 - Filter the list, copy numbers, and **Download** a spreadsheet (all stores, or only ones with a phone)
 
 Keep the black Terminal window open while you use the app. Close it to quit.
+To get a normal Mac app instead (no Terminal window), run `bash make_mac_app.sh` once; then open **Amazon Scanner** from Spotlight or Applications.
 If macOS blocks it, go to System Settings → Privacy & Security, scroll down, and click **Open Anyway**.
 
 ## Command line
