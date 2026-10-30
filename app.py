@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
+from werkzeug.serving import make_server
 
 import scraper
 import updater
@@ -23,6 +24,7 @@ import updater
 HERE = Path(__file__).parent
 LEADS = HERE / "leads.csv"
 PORT = 8791  # first choice; another free port is used if something else has it
+RESTART_EXIT_CODE = 3  # tells the launcher loop to start the app again after an update
 
 app = Flask(__name__, static_folder=None)
 BOOT_ID = f"{os.getpid()}-{datetime.now().timestamp()}"  # changes on every restart
@@ -183,8 +185,9 @@ def update():
         return jsonify(error=f"Update failed: {e}"), 500
 
     def restart():
+        if os.environ.get("SCANNER_SUPERVISED"):
+            os._exit(RESTART_EXIT_CODE)  # the launcher loop starts the new version
         os.environ["SCANNER_NO_BROWSER"] = "1"  # the open page reloads itself
-        os.closerange(3, 4096)  # release the server socket, or the new process can't reuse the port
         os.execv(sys.executable, [sys.executable, str(HERE / "app.py")])
 
     threading.Timer(1.0, restart).start()
@@ -197,4 +200,5 @@ if __name__ == "__main__":
     print(f"Amazon Store Scanner is running at {url}\nKeep this window open. Close it to quit.")
     if not os.environ.pop("SCANNER_NO_BROWSER", None):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
+    # make_server (unlike app.run) keeps the listening socket out of a restarted process
+    make_server("127.0.0.1", port, app, threaded=True).serve_forever()

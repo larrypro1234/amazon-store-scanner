@@ -10,4 +10,10 @@ source .venv/bin/activate
 pip install -q --disable-pip-version-check -r requirements.txt
 python -m playwright install chromium >/dev/null
 
-python app.py
+# Exit code 3 means "updated, start me again".
+export SCANNER_SUPERVISED=1
+while true; do
+  python app.py
+  [ $? -eq 3 ] || break
+  export SCANNER_NO_BROWSER=1
+done

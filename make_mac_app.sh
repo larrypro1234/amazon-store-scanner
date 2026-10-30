@@ -13,7 +13,13 @@ if curl -s http://127.0.0.1:8791/api/status | grep -q phase; then
   exit 0
 fi
 # Stay in the foreground: macOS stops an app's background children when the app exits.
-exec .venv/bin/python app.py > scanner.log 2>&1
+# Exit code 3 means "updated, start me again".
+export SCANNER_SUPERVISED=1
+while true; do
+  .venv/bin/python app.py >> scanner.log 2>&1
+  [ \$? -eq 3 ] || break
+  export SCANNER_NO_BROWSER=1
+done
 EOF
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
