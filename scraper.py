@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import shared_db
 from seller_parser import (
     SellerInfo, extract_asins, extract_seller_ids, is_captcha, parse_seller_page,
 )
@@ -208,7 +209,7 @@ def expand_offers(b: Browser, max_rounds: int = 8) -> None:
 
 
 def iter_product_sellers(b: Browser, asins: list[str]):
-    """For each product, yield (index, total, asin, seller IDs not seen earlier in this run)."""
+    """For each product, yield (index, total, asin, product title, seller IDs not seen earlier in this run)."""
     seen: set[str] = set()
     for i, asin in enumerate(asins, 1):
         # "?aod=1" opens the product page with its "All offers" panel showing: the featured
@@ -216,13 +217,15 @@ def iter_product_sellers(b: Browser, asins: list[str]):
         html = b.get(f"https://{b.domain}/dp/{asin}?aod=1", name=f"asin-{asin}",
                      wait_for=OFFER_SELECTOR + ", #aod-offer-list")
         found: list[str] = []
+        title = ""
         if html:
             expand_offers(b)
             found = extract_seller_ids(b.page.content())
+            title = re.sub(r"^Amazon\.com\s*:\s*", "", b.page.title()).strip()
         new = [s for s in found if s not in seen]
         seen.update(new)
         b.log(f"Product {i}/{len(asins)} ({asin}): {len(found)} sellers, {len(new)} new")
-        yield i, len(asins), asin, new
+        yield i, len(asins), asin, title, new
 
 
 def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
@@ -251,23 +254,36 @@ def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
     return discover_from_asins(b, find_products(b, query, pages))
 
 
+STATUS_TEXT = {
+    "new_lead": "NEW LEAD", "known": "already have this number", "no_us_phone": "no US phone",
+    "no_phone": "no phone", "not_found": "store not found", "captcha": "blocked by Amazon",
+    "db_error": "couldn't reach the shared list",
+}
+
+
 class SellerChecker:
-    """Visits seller profile pages and appends one CSV row per store. Skips stores already in the CSV."""
+    """Visits seller profile pages and appends one CSV row per store (the scan history).
 
-    def __init__(self, b: Browser, out: Path, on_progress=None):
-        self.b, self.out, self.on_progress = b, out, on_progress
+    With shared=True, every seller with a phone is checked against the shared seller database
+    at that moment, and new leads are saved there (see shared_db.py).
+    """
+
+    def __init__(self, b: Browser, out: Path, on_progress=None, shared: bool = False):
+        self.b, self.out, self.on_progress, self.shared = b, out, on_progress, shared
         self.skip = already_done(out)
-        self.queued = self.checked = self.with_phone = self.skipped = 0
+        self.queued = self.checked = self.with_phone = self.new_leads = self.skipped = 0
 
-    def check(self, seller_ids: list[str]) -> None:
+    def check(self, seller_ids: list[str], found_from: str = "", found_from_url: str = "",
+              keywords: str = "") -> None:
         todo = [s for s in dict.fromkeys(seller_ids) if s not in self.skip]
         self.skipped += len(seller_ids) - len(todo)
         self.queued += len(todo)
         self._report()
         for sid in todo:
-            self._check_one(sid)
+            self._check_one(sid, found_from, found_from_url, keywords)
 
-    def _check_one(self, sid: str) -> None:
+    def _check_one(self, sid: str, found_from: str = "", found_from_url: str = "",
+                   keywords: str = "") -> None:
         b = self.b
         url = f"https://{b.domain}/sp?seller={sid}"
         html = b.get(url, name=f"seller-{sid}")
@@ -284,6 +300,13 @@ class SellerChecker:
             "storefront_url": f"https://{b.domain}/s?me={sid}",
             "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+        if self.shared and status == "ok":  # a page that failed to load is never saved
+            try:
+                row["status"] = shared_db.record_seller(row, found_from, found_from_url, keywords)
+            except Exception as e:
+                row["status"] = "db_error"
+                b.log(f"  ! Couldn't reach the shared seller list: {e}")
+        status = row["status"]
         new_file = not self.out.exists() or self.out.stat().st_size == 0
         fields = CSV_FIELDS
         if not new_file:  # keep the column order the file already has (older versions differ)
@@ -297,22 +320,29 @@ class SellerChecker:
         self.skip.add(sid)
         self.checked += 1
         self.with_phone += bool(info.phones)
+        self.new_leads += status == "new_lead"
+        phones = ", ".join(info.phones)
         b.log(f"  Store {self.checked}/{self.queued} {info.seller_name or sid}: "
-              f"{', '.join(info.phones) or status}")
+              f"{phones + ' — ' if phones else ''}{STATUS_TEXT.get(status, status)}")
         self._report()
 
     def _report(self) -> None:
         if self.on_progress:
-            self.on_progress(self.checked, self.queued, self.with_phone)
+            self.on_progress(self.checked, self.queued,
+                             self.new_leads if self.shared else self.with_phone)
 
     def finish(self) -> None:
         if self.skipped:
             self.b.log(f"Skipped {self.skipped} stores already checked in earlier scans")
-        self.b.log(f"Done. {self.with_phone}/{self.checked} stores had a phone number.")
+        if self.shared:
+            self.b.log(f"Done. {self.checked} stores checked: {self.with_phone} had a phone, "
+                       f"{self.new_leads} new leads saved to the shared list.")
+        else:
+            self.b.log(f"Done. {self.with_phone}/{self.checked} stores had a phone number.")
 
 
 def scrape_sellers(b: Browser, seller_ids: list[str], out: Path, on_progress=None) -> None:
-    checker = SellerChecker(b, out, on_progress)
+    checker = SellerChecker(b, out, on_progress, shared=True)
     checker.check(seller_ids)
     checker.finish()
 

@@ -78,6 +78,10 @@
   .phone { font-weight: 600; color: var(--good); white-space: nowrap; }
   .phone-pill { display: inline-flex; gap: 6px; align-items: center; background: var(--good-soft);
                 border-radius: 6px; padding: 2px 8px; margin: 0 4px 4px 0; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 99px; padding: 1px 8px; }
+  .tag-new { background: var(--accent-soft); color: var(--accent); }
+  .tag-known { background: var(--bg); color: var(--muted); }
+  .tag-bad { color: var(--bad); }
   .copy { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; }
   .none { color: var(--muted); }
   .small { color: var(--muted); font-size: 12px; }
@@ -144,7 +148,7 @@
       <div class="bar"><div id="bar"></div></div>
       <div class="stats">
         <div class="stat"><b id="s-checked">0</b><span>stores checked / found so far</span></div>
-        <div class="stat good"><b id="s-phones">0</b><span>with a phone number</span></div>
+        <div class="stat good"><b id="s-phones">0</b><span>new leads (saved to shared list)</span></div>
       </div>
       <p class="hint" id="captcha-tip">Chrome works minimized in your Dock. If Amazon asks you to type letters, the window pops up: do it there and the scan keeps going by itself.</p>
       <details><summary>Show details</summary><pre class="log" id="log">Nothing yet.</pre></details>
@@ -228,6 +232,10 @@ async function loadResults() {
   render();
 }
 
+const TAGS = {
+  new_lead: ["New lead", "tag-new"], known: ["Already have this number", "tag-known"],
+  no_us_phone: ["No US phone", "tag-known"], db_error: ["Not checked against shared list", "tag-bad"],
+};
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function render() {
@@ -247,6 +255,7 @@ function render() {
       `<span class="phone-pill"><a class="phone" href="tel:${esc(p.replace(/[^+\d]/g, ""))}">${esc(p)}</a>` +
       `<button class="copy" data-copy="${esc(p)}" title="Copy">Copy</button></span>`).join("")
       : `<span class="none">${r.status === "captcha" ? "blocked, scan again" : r.status === "not_found" ? "store not found" : "none"}</span>`;
+    const tag = TAGS[r.status] ? `<br><span class="tag ${TAGS[r.status][1]}">${TAGS[r.status][0]}</span>` : "";
     const emails = r.emails ? r.emails.split(" | ").map(e => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join("<br>") : "";
     const rating = r.positive_pct ? `${esc(r.positive_pct)}%<br><span class="small">${esc(r.rating_count)} ratings</span>` : "";
     const when = r.scraped_at ? new Date(r.scraped_at).toLocaleDateString() : "";
@@ -254,7 +263,7 @@ function render() {
       <td><a href="${esc(r.profile_url)}" target="_blank" rel="noopener">${esc(r.seller_name || r.seller_id)}</a>
           <br><span class="small"><a href="${esc(r.profile_url)}" target="_blank" rel="noopener">Seller page</a>
           · <a href="${esc(r.storefront_url)}" target="_blank" rel="noopener">Storefront</a></span></td>
-      <td>${phones}</td><td>${emails}</td><td>${esc(r.business_name)}</td>
+      <td>${phones}${tag}</td><td>${emails}</td><td>${esc(r.business_name)}</td>
       <td class="small">${esc(r.business_address)}</td><td>${rating}</td><td class="small">${when}</td></tr>`;
   }).join("");
 }

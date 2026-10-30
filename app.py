@@ -20,6 +20,7 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 from werkzeug.serving import make_server
 
 import scraper
+import shared_db
 import updater
 
 HERE = Path(__file__).parent
@@ -68,17 +69,18 @@ class Scan:
             self.log("Opening Chrome...")
             b = scraper.Browser(domain, headless=False, min_delay=4, max_delay=9, save_html=None,
                                 log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
-            checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress)
+            checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress, shared=True)
             if mode == "search":
                 self.log(f'Searching Amazon for "{query}" ({pages} page{"s" * (pages > 1)})')
                 asins = scraper.find_products(b, query, pages)
                 self.phase = "checking"
                 # Check each product's stores right away so numbers show up as the scan goes.
-                for *_, new_sellers in scraper.iter_product_sellers(b, asins):
-                    checker.check(new_sellers)
+                for _, _, asin, title, new_sellers in scraper.iter_product_sellers(b, asins):
+                    checker.check(new_sellers, found_from=f'"{query}" search: {title}',
+                                  found_from_url=f"https://{domain}/dp/{asin}", keywords=query)
             else:
                 self.phase = "checking"
-                checker.check([scraper.to_seller_id(s) for s in links])
+                checker.check([scraper.to_seller_id(s) for s in links], found_from="Pasted store link")
             checker.finish()
             self.phase = "done"
         except scraper.Stopped:
@@ -208,6 +210,12 @@ def update():
 
 
 if __name__ == "__main__":
+    try:  # one time: numbers this app found before the shared database existed
+        n = shared_db.import_once(LEADS, HERE / ".shared-db-imported")
+        if n:
+            print(f"Added {n} earlier Amazon leads to the shared seller list")
+    except Exception as e:
+        print(f"Couldn't import earlier leads into the shared seller list (will retry next start): {e}")
     port = free_port(PORT)
     url = f"http://127.0.0.1:{port}"
     print(f"Amazon Store Scanner is running at {url}\nKeep this window open. Close it to quit.")

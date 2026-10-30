@@ -23,6 +23,20 @@ Keep the black Terminal window open while you use the app. Close it to quit.
 To get a normal Mac app instead (no Terminal window), run `bash make_mac_app.sh` once; then open **Amazon Scanner** from Spotlight or Applications.
 If macOS blocks it, go to System Settings → Privacy & Security, scroll down, and click **Open Anyway**.
 
+## Shared seller list (with the Walmart Seller Finder)
+
+The app checks every store's phone against `~/SellerFinderData/numbers.db`, the database it shares with
+the Walmart Seller Finder, at the moment the store is checked:
+
+- **New lead**: a US number neither app has yet. The number is saved (`source = "Found by Amazon app"`)
+  and the store goes into the shared Leads inbox, tagged Amazon.
+- **Already have this number**: either app found it before. Nothing is written.
+- **No US phone** / **no phone**: nothing is written (the shared list holds US 10-digit numbers only).
+
+On its first start, the app adds the numbers it found before this existed (once). It never deletes or
+changes rows, never changes a lead's status, and never writes to the Walmart app's `searches` table.
+`leads.csv` is only this app's scan history (which stores it already visited).
+
 ## Command line
 
 ### Setup (Mac)
