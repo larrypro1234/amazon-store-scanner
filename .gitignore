@@ -5,3 +5,4 @@ pages/
 .venv/
 *.zip
 *.db
+cleared.json

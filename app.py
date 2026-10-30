@@ -6,6 +6,7 @@ Double-click "Start Scanner.command" (or run `python app.py`); it opens the app 
 from __future__ import annotations
 
 import csv
+import json
 import os
 import socket
 import sys
@@ -25,6 +26,7 @@ import updater
 
 HERE = Path(__file__).parent
 LEADS = HERE / "leads.csv"
+CLEARED = HERE / "cleared.json"  # stores whose lead was already downloaded: hidden, never deleted
 PORT = 8791  # first choice; another free port is used if something else has it
 RESTART_EXIT_CODE = 3  # tells the launcher loop to start the app again after an update
 
@@ -100,6 +102,23 @@ class Scan:
 scan = Scan()
 
 
+def load_cleared() -> dict[str, str]:
+    try:
+        return json.loads(CLEARED.read_text())
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def mark_cleared(seller_ids: list[str]) -> None:
+    cleared = load_cleared()
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    for sid in seller_ids:
+        cleared.setdefault(sid, stamp)
+    tmp = CLEARED.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cleared, indent=0))
+    tmp.replace(CLEARED)
+
+
 def read_results() -> list[dict]:
     if not LEADS.exists():
         return []
@@ -113,6 +132,9 @@ def read_results() -> list[dict]:
             r["shared"] = shared_db.shared_state(r, sources)
     except Exception as e:
         print(f"Couldn't read the shared seller list: {e}")
+    cleared = load_cleared()
+    for r in rows:
+        r["cleared"] = cleared.get(r["seller_id"], "")
     return rows
 
 
@@ -166,15 +188,19 @@ def download():
     rows = read_results()
     if request.args.get("phones") == "1":
         rows = [r for r in rows if r.get("phones")]
-    if request.args.get("new") == "1":
-        rows = [r for r in rows if r.get("shared", {}).get("state") == "new"]
+    new_only = request.args.get("new") == "1"
+    if new_only:  # only leads not downloaded before; they're cleared from the table afterwards
+        rows = [r for r in rows if r.get("shared", {}).get("state") == "new" and not r["cleared"]]
     out = HERE / "leads-export.csv"
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=scraper.CSV_FIELDS, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    name = ("amazon-new-leads.csv" if request.args.get("new") == "1" else
+    stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+    name = (f"amazon-new-leads-{stamp}.csv" if new_only else
             "amazon-stores-with-phones.csv" if request.args.get("phones") == "1" else "amazon-stores.csv")
+    if new_only:
+        mark_cleared([r["seller_id"] for r in rows])
     return send_file(out, as_attachment=True, download_name=name)
 
 
