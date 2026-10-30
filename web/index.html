@@ -161,6 +161,8 @@
       <div class="spacer"></div>
       <input type="text" id="filter" placeholder="Filter by name, phone, address…">
       <label class="check"><input type="checkbox" id="only-phones" checked> Only with phone</label>
+      <label class="check"><input type="checkbox" id="only-new"> Only new leads</label>
+      <a class="ghost" href="/api/download?new=1">Download new leads</a>
       <a class="ghost" href="/api/download?phones=1">Download phones</a>
       <a class="ghost" href="/api/download">Download all</a>
     </div>
@@ -204,6 +206,7 @@ $("query").onkeydown = e => { if (e.key === "Enter") $("start").click(); };
 $("stop").onclick = () => fetch("/api/stop", {method: "POST"}).then(refreshStatus);
 $("filter").oninput = render;
 $("only-phones").onchange = render;
+$("only-new").onchange = render;
 
 function startPolling() {
   if (!polling) polling = setInterval(refreshStatus, 2000);
@@ -236,15 +239,23 @@ const TAGS = {
   new_lead: ["New lead", "tag-new"], known: ["Already have this number", "tag-known"],
   no_us_phone: ["No US phone", "tag-known"], db_error: ["Not checked against shared list", "tag-bad"],
 };
+// Live status against the shared seller list, read each time the page loads.
+const SHARED_TAGS = {
+  new: ["New lead", "tag-new"], had: ["Already had · {source}", "tag-known"],
+  missing: ["Not in shared list", "tag-bad"], no_us_phone: ["No US phone", "tag-known"],
+};
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 function render() {
   const q = $("filter").value.trim().toLowerCase();
-  const onlyPhones = $("only-phones").checked;
-  const shown = rows.filter(r => (!onlyPhones || r.phones) &&
+  const onlyPhones = $("only-phones").checked, onlyNew = $("only-new").checked;
+  const shown = rows.filter(r => (!onlyPhones || r.phones) && (!onlyNew || r.shared?.state === "new") &&
     (!q || [r.seller_name, r.business_name, r.phones, r.emails, r.business_address].join(" ").toLowerCase().includes(q)));
   const withPhone = rows.filter(r => r.phones).length;
-  $("count").textContent = `· ${rows.length} checked · ${withPhone} with phone`;
+  const had = rows.filter(r => r.shared?.state === "had").length;
+  const fresh = rows.filter(r => r.shared?.state === "new").length;
+  $("count").textContent = `· ${rows.length} checked · ${withPhone} with phone` +
+    (rows.some(r => r.shared) ? ` · ${had} already in shared list · ${fresh} new leads` : "");
   if (!shown.length) {
     $("rows").innerHTML = `<tr><td colspan="7" class="empty">${rows.length
       ? "No stores match." : "No stores yet. Start a scan above."}</td></tr>`;
@@ -255,7 +266,9 @@ function render() {
       `<span class="phone-pill"><a class="phone" href="tel:${esc(p.replace(/[^+\d]/g, ""))}">${esc(p)}</a>` +
       `<button class="copy" data-copy="${esc(p)}" title="Copy">Copy</button></span>`).join("")
       : `<span class="none">${r.status === "captcha" ? "blocked, scan again" : r.status === "not_found" ? "store not found" : "none"}</span>`;
-    const tag = TAGS[r.status] ? `<br><span class="tag ${TAGS[r.status][1]}">${TAGS[r.status][0]}</span>` : "";
+    const live = r.shared && SHARED_TAGS[r.shared.state];
+    const t = live ? [live[0].replace("{source}", r.shared.source || ""), live[1]] : TAGS[r.status];
+    const tag = t ? `<br><span class="tag ${t[1]}">${esc(t[0])}</span>` : "";
     const emails = r.emails ? r.emails.split(" | ").map(e => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join("<br>") : "";
     const rating = r.positive_pct ? `${esc(r.positive_pct)}%<br><span class="small">${esc(r.rating_count)} ratings</span>` : "";
     const when = r.scraped_at ? new Date(r.scraped_at).toLocaleDateString() : "";

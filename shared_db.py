@@ -47,6 +47,36 @@ def is_known(phone: str) -> bool:
         con.close()
 
 
+def lookup(phones: list[str]) -> dict[str, str]:
+    """Which of these 10-digit numbers are in the shared list right now, and who saved each (read-only)."""
+    found: dict[str, str] = {}
+    phones = list(dict.fromkeys(p for p in phones if p))
+    con = db()
+    try:
+        for i in range(0, len(phones), 500):  # stay under SQLite's variable limit
+            chunk = phones[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            found.update(con.execute(f"SELECT phone, source FROM numbers WHERE phone IN ({marks})", chunk))
+    finally:
+        con.close()
+    return found
+
+
+def shared_state(row: dict, sources: dict[str, str]) -> dict:
+    """Live status of one scanned store against the shared list, for display."""
+    us = [n for n in map(normalize_phone, (row.get("phones") or "").split(" | ")) if n]
+    if not row.get("phones"):
+        return {"state": "no_phone"}
+    if not us:
+        return {"state": "no_us_phone"}
+    hits = [sources[n] for n in us if n in sources]
+    if not hits:
+        return {"state": "missing"}
+    if all(src == SOURCE_FOUND for src in hits):
+        return {"state": "new", "source": SOURCE_FOUND}
+    return {"state": "had", "source": next(src for src in hits if src != SOURCE_FOUND) or "shared list"}
+
+
 def add_number(phone: str, details: str, source: str = SOURCE_FOUND) -> None:
     con = db()
     try:

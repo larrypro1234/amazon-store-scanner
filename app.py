@@ -105,7 +105,15 @@ def read_results() -> list[dict]:
         return []
     with LEADS.open(newline="", encoding="utf-8") as f:
         latest = {r["seller_id"]: r for r in csv.DictReader(f)}  # a re-check replaces older rows
-    return sorted(latest.values(), key=lambda r: r.get("scraped_at", ""), reverse=True)
+    rows = sorted(latest.values(), key=lambda r: r.get("scraped_at", ""), reverse=True)
+    try:  # live status against the shared seller list, read at this moment
+        phones = [shared_db.normalize_phone(p) for r in rows for p in (r.get("phones") or "").split(" | ")]
+        sources = shared_db.lookup(phones)
+        for r in rows:
+            r["shared"] = shared_db.shared_state(r, sources)
+    except Exception as e:
+        print(f"Couldn't read the shared seller list: {e}")
+    return rows
 
 
 @app.get("/")
@@ -158,12 +166,15 @@ def download():
     rows = read_results()
     if request.args.get("phones") == "1":
         rows = [r for r in rows if r.get("phones")]
+    if request.args.get("new") == "1":
+        rows = [r for r in rows if r.get("shared", {}).get("state") == "new"]
     out = HERE / "leads-export.csv"
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=scraper.CSV_FIELDS, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    name = "amazon-stores-with-phones.csv" if request.args.get("phones") == "1" else "amazon-stores.csv"
+    name = ("amazon-new-leads.csv" if request.args.get("new") == "1" else
+            "amazon-stores-with-phones.csv" if request.args.get("phones") == "1" else "amazon-stores.csv")
     return send_file(out, as_attachment=True, download_name=name)
 
 

@@ -117,3 +117,24 @@ def test_import_once(db_file, tmp_path):
     con = sqlite3.connect(db_file)
     assert con.execute("SELECT COUNT(*) FROM leads").fetchone()[0] == 2  # Walmart's + the one import
     assert con.execute("SELECT status FROM leads WHERE key='9175921495'").fetchone() == ("added",)
+
+
+def test_live_state_shows_who_had_each_number(db_file):
+    walmart_rows(db_file)  # 9175921495 saved by the Walmart app
+    shared_db.record_seller(row("+1 512-555-0100"))  # new: saved by this app
+    rows = [row("(917) 592-1495"), row("+1 512-555-0100"), row("+1 646-555-0199"),
+            row("+86 755 2345 6789"), row("")]
+    phones = [shared_db.normalize_phone(p) for r in rows for p in r["phones"].split(" | ")]
+    sources = shared_db.lookup(phones)
+    states = [shared_db.shared_state(r, sources) for r in rows]
+    assert states == [{"state": "had", "source": "Found by Walmart app"},
+                      {"state": "new", "source": "Found by Amazon app"},
+                      {"state": "missing"}, {"state": "no_us_phone"}, {"state": "no_phone"}]
+
+
+def test_lookup_is_read_only_and_handles_many_numbers(db_file):
+    walmart_rows(db_file)
+    before = dump(db_file)
+    many = [f"{5550000000 + i}" for i in range(1200)] + ["9175921495"]
+    assert shared_db.lookup(many) == {"9175921495": "Found by Walmart app"}
+    assert dump(db_file) == before
