@@ -184,6 +184,7 @@ def update():
 
     def restart():
         os.environ["SCANNER_NO_BROWSER"] = "1"  # the open page reloads itself
+        os.closerange(3, 4096)  # release the server socket, or the new process can't reuse the port
         os.execv(sys.executable, [sys.executable, str(HERE / "app.py")])
 
     threading.Timer(1.0, restart).start()
