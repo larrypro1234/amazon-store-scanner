@@ -40,7 +40,7 @@ class Browser:
     """A persistent Chromium profile so cookies (and any CAPTCHA you solve) carry over between runs."""
 
     def __init__(self, domain: str, headless: bool, min_delay: float, max_delay: float,
-                 save_html: Path | None, log=print, should_stop=lambda: False):
+                 save_html: Path | None, log=print, should_stop=lambda: False, hidden: bool = False):
         from playwright.sync_api import sync_playwright
 
         self.log, self.should_stop = log, should_stop
@@ -55,6 +55,21 @@ class Browser:
         )
         self.page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
         self._last = 0.0
+        self.hidden = hidden and not headless
+        if self.hidden:
+            self.set_window("minimized")
+
+    def set_window(self, state: str) -> None:
+        """Minimize ("minimized") or show ("normal") the Chrome window."""
+        try:
+            cdp = self._ctx.new_cdp_session(self.page)
+            window_id = cdp.send("Browser.getWindowForTarget")["windowId"]
+            cdp.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": {"windowState": state}})
+            cdp.detach()
+            if state == "normal":
+                self.page.bring_to_front()
+        except Exception:
+            pass  # cosmetic only; scanning works either way
 
     def sleep(self, seconds: float) -> None:
         end = time.time() + seconds
@@ -77,7 +92,17 @@ class Browser:
         out = Path(__file__).parent / "debug"
         out.mkdir(exist_ok=True)
         (out / f"{name}.html").write_text(self.page.content(), encoding="utf-8")
-        self.page.screenshot(path=str(out / f"{name}.png"))
+        if self.hidden:
+            self.set_window("normal")  # minimized windows can't be photographed
+        for attempt in range(3):
+            try:
+                self.page.wait_for_timeout(700)
+                self.page.screenshot(path=str(out / f"{name}.png"))
+                break
+            except Exception:
+                pass  # window still restoring; the HTML copy is saved regardless
+        if self.hidden:
+            self.set_window("minimized")
         return out / f"{name}.png"
 
     def get(self, url: str, name: str = "", wait_for: str | None = None) -> str | None:
@@ -108,7 +133,11 @@ class Browser:
                     continue
                 self.log("  ! Amazon showed a CAPTCHA. Solve it in the Chrome window; "
                          "the scan continues by itself.")
+                if self.hidden:
+                    self.set_window("normal")
                 html = self._wait_for_captcha_solved()
+                if self.hidden:
+                    self.set_window("minimized")
                 if html is None:
                     continue
 

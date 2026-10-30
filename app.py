@@ -64,7 +64,7 @@ class Scan:
             self.phase = "finding"
             self.log("Opening Chrome...")
             b = scraper.Browser(domain, headless=False, min_delay=4, max_delay=9, save_html=None,
-                                log=self.log, should_stop=lambda: self.stop_requested)
+                                log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
             if mode == "search":
                 self.log(f'Searching Amazon for "{query}" ({pages} page{"s" * (pages > 1)})')
                 ids = scraper.discover_from_search(b, query, pages)
