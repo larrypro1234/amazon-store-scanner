@@ -65,3 +65,10 @@ def test_continue_shopping_interstitial_counts_as_bot_check():
 def test_asins_from_links_when_no_data_asin():
     html = '<a href="/Some-Case/dp/B0CASE0001/ref=sr_1_1">a</a><a href="/gp/product/B0CASE0002?th=1">b</a>'
     assert extract_asins(html) == ["B0CASE0001", "B0CASE0002"]
+
+
+def test_offer_panel_sellers_skip_amazon_itself():
+    html = ('<div id="aod-pinned-offer"><a href="/gp/help/seller/at-a-glance.html?ie=UTF8&amp;seller=ATVPDKIKX0DER">Amazon.com</a></div>'
+            '<div id="aod-offer"><a href="/gp/aag/main?ie=UTF8&amp;seller=A2OFFERSELL01&amp;isAmazonFulfilled=1">Shop A</a></div>'
+            '<div id="aod-offer"><a href="/gp/aag/main?seller=A3OFFERSELL02">Shop B</a></div>')
+    assert extract_seller_ids(html) == ["A2OFFERSELL01", "A3OFFERSELL02"]

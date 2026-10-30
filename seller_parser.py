@@ -57,11 +57,17 @@ def is_captcha(html: str) -> bool:
     return any(m.lower() in low for m in CAPTCHA_MARKERS)
 
 
+# Amazon's own retail accounts: their profile pages have no third-party contact details.
+AMAZON_SELLER_IDS = {"ATVPDKIKX0DER", "A3DWYIK6Y9EEQB", "A1F83G8C2ARO7P", "A3JWKAKR8XB7XF",
+                     "A1X6FK5RDHNB96", "A1RKKUPIHCS9HS"}
+
+
 def extract_seller_ids(html: str) -> list[str]:
     """Seller IDs linked from any page (product page, offer listing, search results)."""
     seen: dict[str, None] = {}
     for sid in SELLER_ID_RE.findall(html.replace("&amp;", "&")):
-        seen.setdefault(sid, None)
+        if sid not in AMAZON_SELLER_IDS:
+            seen.setdefault(sid, None)
     return list(seen)
 
 

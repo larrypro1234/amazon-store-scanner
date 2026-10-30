@@ -173,14 +173,12 @@ def already_done(out: Path) -> set[str]:
 def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
     sellers: dict[str, None] = {}
     for i, asin in enumerate(asins, 1):
-        found: list[str] = []
-        # The product page links the featured seller; the "All offers" panel lists the rest.
-        for url in (f"https://{b.domain}/dp/{asin}",
-                    f"https://{b.domain}/gp/product/ajax/?asin={asin}&pc=dp&experienceId=aodAjaxMain"):
-            html = b.get(url, name=f"asin-{asin}")
-            if html:
-                found += extract_seller_ids(html)
-        new = [s for s in dict.fromkeys(found) if s not in sellers]
+        # "?aod=1" opens the product page with its "All offers" panel showing: the featured
+        # seller and every other seller of this product are linked on one page.
+        html = b.get(f"https://{b.domain}/dp/{asin}?aod=1", name=f"asin-{asin}",
+                     wait_for="#aod-offer, #aod-pinned-offer, #aod-offer-list")
+        found = extract_seller_ids(html) if html else []
+        new = [s for s in found if s not in sellers]
         sellers.update(dict.fromkeys(new))
         b.log(f"[{i}/{len(asins)}] product {asin}: {len(new)} new stores ({len(sellers)} total)")
     return list(sellers)
