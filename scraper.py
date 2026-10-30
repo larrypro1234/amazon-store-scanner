@@ -58,6 +58,17 @@ class Browser:
         self.hidden = hidden and not headless
         if self.hidden:
             self.set_window("minimized")
+            self.log(f"Chrome window: {self.window_state()}")
+
+    def window_state(self) -> str:
+        try:
+            cdp = self._ctx.new_cdp_session(self.page)
+            window_id = cdp.send("Browser.getWindowForTarget")["windowId"]
+            state = cdp.send("Browser.getWindowBounds", {"windowId": window_id})["bounds"]["windowState"]
+            cdp.detach()
+            return state
+        except Exception as e:
+            return f"unknown ({e})"
 
     def set_window(self, state: str) -> None:
         """Minimize ("minimized") or show ("normal") the Chrome window."""
@@ -170,21 +181,55 @@ def already_done(out: Path) -> set[str]:
         return {r["seller_id"] for r in csv.DictReader(f) if r.get("status") != "captcha"}
 
 
-def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
-    sellers: dict[str, None] = {}
+OFFER_SELECTOR = "#aod-offer, #aod-pinned-offer"
+MORE_OFFERS = re.compile(r"See \d+ more options|Show more (results|offers)", re.I)
+
+
+def expand_offers(b: Browser, max_rounds: int = 8) -> None:
+    """Load every seller in the open "All offers" panel ("See 31 more options", infinite scroll)."""
+    page = b.page
+    for _ in range(max_rounds):
+        before = page.locator(OFFER_SELECTOR).count()
+        more = page.get_by_text(MORE_OFFERS).first
+        clicked = False
+        try:
+            if more.is_visible():
+                more.click(timeout=3000)
+                clicked = True
+        except Exception:
+            pass
+        page.evaluate("""() => {
+            const el = document.querySelector('#all-offers-display-scroller, #aod-container');
+            if (el) el.scrollTop = el.scrollHeight;
+        }""")
+        b.sleep(1.5)
+        if not clicked and page.locator(OFFER_SELECTOR).count() <= before:
+            return
+
+
+def iter_product_sellers(b: Browser, asins: list[str]):
+    """For each product, yield (index, total, asin, seller IDs not seen earlier in this run)."""
+    seen: set[str] = set()
     for i, asin in enumerate(asins, 1):
         # "?aod=1" opens the product page with its "All offers" panel showing: the featured
         # seller and every other seller of this product are linked on one page.
         html = b.get(f"https://{b.domain}/dp/{asin}?aod=1", name=f"asin-{asin}",
-                     wait_for="#aod-offer, #aod-pinned-offer, #aod-offer-list")
-        found = extract_seller_ids(html) if html else []
-        new = [s for s in found if s not in sellers]
-        sellers.update(dict.fromkeys(new))
-        b.log(f"[{i}/{len(asins)}] product {asin}: {len(new)} new stores ({len(sellers)} total)")
-    return list(sellers)
+                     wait_for=OFFER_SELECTOR + ", #aod-offer-list")
+        found: list[str] = []
+        if html:
+            expand_offers(b)
+            found = extract_seller_ids(b.page.content())
+        new = [s for s in found if s not in seen]
+        seen.update(new)
+        b.log(f"Product {i}/{len(asins)} ({asin}): {len(found)} sellers, {len(new)} new")
+        yield i, len(asins), asin, new
 
 
-def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
+def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
+    return [sid for *_, new in iter_product_sellers(b, asins) for sid in new]
+
+
+def find_products(b: Browser, query: str, pages: int) -> list[str]:
     asins: dict[str, None] = {}
     for p in range(1, pages + 1):
         html = b.get(f"https://{b.domain}/s?k={quote_plus(query)}&page={p}", name=f"search-{p}",
@@ -199,45 +244,73 @@ def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
                   f"Saved a picture of it: {pic}")
             break
         asins.update(dict.fromkeys(page_asins))
-    return discover_from_asins(b, list(asins))
+    return list(asins)
+
+
+def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
+    return discover_from_asins(b, find_products(b, query, pages))
+
+
+class SellerChecker:
+    """Visits seller profile pages and appends one CSV row per store. Skips stores already in the CSV."""
+
+    def __init__(self, b: Browser, out: Path, on_progress=None):
+        self.b, self.out, self.on_progress = b, out, on_progress
+        self.skip = already_done(out)
+        self.queued = self.checked = self.with_phone = self.skipped = 0
+
+    def check(self, seller_ids: list[str]) -> None:
+        todo = [s for s in dict.fromkeys(seller_ids) if s not in self.skip]
+        self.skipped += len(seller_ids) - len(todo)
+        self.queued += len(todo)
+        self._report()
+        for sid in todo:
+            self._check_one(sid)
+
+    def _check_one(self, sid: str) -> None:
+        b = self.b
+        url = f"https://{b.domain}/sp?seller={sid}"
+        html = b.get(url, name=f"seller-{sid}")
+        if html is None:
+            info, status = SellerInfo(seller_id=sid), "captcha"
+        else:
+            info = parse_seller_page(html, sid)
+            status = "ok" if info.phones else "no_phone"
+            if not info.seller_name and not info.business_name:
+                status = "not_found"
+        row = info.to_row() | {
+            "status": status,
+            "profile_url": url,
+            "storefront_url": f"https://{b.domain}/s?me={sid}",
+            "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        new_file = not self.out.exists() or self.out.stat().st_size == 0
+        with self.out.open("a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+            if new_file:
+                w.writeheader()
+            w.writerow({k: row.get(k, "") for k in CSV_FIELDS})
+        self.skip.add(sid)
+        self.checked += 1
+        self.with_phone += bool(info.phones)
+        b.log(f"  Store {self.checked}/{self.queued} {info.seller_name or sid}: "
+              f"{', '.join(info.phones) or status}")
+        self._report()
+
+    def _report(self) -> None:
+        if self.on_progress:
+            self.on_progress(self.checked, self.queued, self.with_phone)
+
+    def finish(self) -> None:
+        if self.skipped:
+            self.b.log(f"Skipped {self.skipped} stores already checked in earlier scans")
+        self.b.log(f"Done. {self.with_phone}/{self.checked} stores had a phone number.")
 
 
 def scrape_sellers(b: Browser, seller_ids: list[str], out: Path, on_progress=None) -> None:
-    done = already_done(out)
-    todo = [s for s in seller_ids if s not in done]
-    if len(todo) < len(seller_ids):
-        b.log(f"Skipping {len(seller_ids) - len(todo)} stores already checked")
-
-    new_file = not out.exists() or out.stat().st_size == 0
-    with_phone = 0
-    with out.open("a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
-        if new_file:
-            w.writeheader()
-        for i, sid in enumerate(todo, 1):
-            url = f"https://{b.domain}/sp?seller={sid}"
-            html = b.get(url, name=f"seller-{sid}")
-            if html is None:
-                info, status = SellerInfo(seller_id=sid), "captcha"
-            else:
-                info = parse_seller_page(html, sid)
-                status = "ok" if info.phones else "no_phone"
-                if not info.seller_name and not info.business_name:
-                    status = "not_found"
-            row = info.to_row() | {
-                "status": status,
-                "profile_url": url,
-                "storefront_url": f"https://{b.domain}/s?me={sid}",
-                "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            }
-            w.writerow({k: row.get(k, "") for k in CSV_FIELDS})
-            f.flush()
-            with_phone += bool(info.phones)
-            phones = ", ".join(info.phones) or "-"
-            b.log(f"[{i}/{len(todo)}] {sid} {info.seller_name or '?'}: {status} {phones}")
-            if on_progress:
-                on_progress(i, len(todo), with_phone)
-    b.log(f"Done. {with_phone}/{len(todo)} stores had a phone number.")
+    checker = SellerChecker(b, out, on_progress)
+    checker.check(seller_ids)
+    checker.finish()
 
 
 def main(argv: list[str] | None = None) -> None:

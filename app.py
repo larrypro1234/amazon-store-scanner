@@ -68,14 +68,18 @@ class Scan:
             self.log("Opening Chrome...")
             b = scraper.Browser(domain, headless=False, min_delay=4, max_delay=9, save_html=None,
                                 log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
+            checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress)
             if mode == "search":
                 self.log(f'Searching Amazon for "{query}" ({pages} page{"s" * (pages > 1)})')
-                ids = scraper.discover_from_search(b, query, pages)
+                asins = scraper.find_products(b, query, pages)
+                self.phase = "checking"
+                # Check each product's stores right away so numbers show up as the scan goes.
+                for *_, new_sellers in scraper.iter_product_sellers(b, asins):
+                    checker.check(new_sellers)
             else:
-                ids = list(dict.fromkeys(scraper.to_seller_id(s) for s in links))
-            self.log(f"Found {len(ids)} stores. Checking each one for a phone number...")
-            self.phase = "checking"
-            scraper.scrape_sellers(b, ids, LEADS, on_progress=self._progress)
+                self.phase = "checking"
+                checker.check([scraper.to_seller_id(s) for s in links])
+            checker.finish()
             self.phase = "done"
         except scraper.Stopped:
             self.log("Stopped. Everything checked so far is saved.")
