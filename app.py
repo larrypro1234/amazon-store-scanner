@@ -73,7 +73,8 @@ class Scan:
                                 log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
             checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress, shared=True)
             if mode == "search":
-                self.log(f'Searching Amazon for "{query}" ({pages} page{"s" * (pages > 1)})')
+                how_many = "all pages" if pages == scraper.ALL_PAGES else f'{pages} page{"s" * (pages > 1)}'
+                self.log(f'Searching Amazon for "{query}" ({how_many})')
                 asins = scraper.find_products(b, query, pages)
                 self.phase = "checking"
                 # Check each product's stores right away so numbers show up as the scan goes.
@@ -151,7 +152,8 @@ def start_scan():
     mode = body.get("mode", "search")
     query = (body.get("query") or "").strip()
     links = [l.strip() for l in (body.get("links") or "").splitlines() if l.strip()]
-    pages = max(1, min(20, int(body.get("pages") or 1)))
+    raw_pages = str(body.get("pages") or "1")
+    pages = scraper.ALL_PAGES if raw_pages == "all" else max(1, min(20, int(raw_pages)))
     domain = body.get("domain") or "www.amazon.com"
     if mode == "search" and not query:
         return jsonify(error="Type what to search for."), 400

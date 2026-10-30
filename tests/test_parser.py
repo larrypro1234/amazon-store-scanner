@@ -72,3 +72,10 @@ def test_offer_panel_sellers_skip_amazon_itself():
             '<div id="aod-offer"><a href="/gp/aag/main?ie=UTF8&amp;seller=A2OFFERSELL01&amp;isAmazonFulfilled=1">Shop A</a></div>'
             '<div id="aod-offer"><a href="/gp/aag/main?seller=A3OFFERSELL02">Shop B</a></div>')
     assert extract_seller_ids(html) == ["A2OFFERSELL01", "A3OFFERSELL02"]
+
+
+def test_has_next_page():
+    from seller_parser import has_next_page
+    assert has_next_page('<a class="s-pagination-item s-pagination-next" href="/s?k=x&page=2">Next</a>')
+    assert not has_next_page('<span class="s-pagination-item s-pagination-next s-pagination-disabled">Next</span>')
+    assert not has_next_page('<div>no pagination</div>')

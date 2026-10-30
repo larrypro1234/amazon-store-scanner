@@ -23,7 +23,7 @@ from urllib.parse import quote_plus
 
 import shared_db
 from seller_parser import (
-    SellerInfo, extract_asins, extract_seller_ids, is_captcha, parse_seller_page,
+    SellerInfo, extract_asins, extract_seller_ids, has_next_page, is_captcha, parse_seller_page,
 )
 
 CSV_FIELDS = ["seller_id", "status", "seller_name", "storefront_url", "profile_url", "business_name",
@@ -232,9 +232,15 @@ def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
     return [sid for *_, new in iter_product_sellers(b, asins) for sid in new]
 
 
+ALL_PAGES = 0
+MAX_PAGES = 50  # safety cap for "all pages"
+
+
 def find_products(b: Browser, query: str, pages: int) -> list[str]:
+    """Products from the first `pages` search result pages; pages=ALL_PAGES keeps going until the last one."""
     asins: dict[str, None] = {}
-    for p in range(1, pages + 1):
+    last = MAX_PAGES if pages == ALL_PAGES else pages
+    for p in range(1, last + 1):
         html = b.get(f"https://{b.domain}/s?k={quote_plus(query)}&page={p}", name=f"search-{p}",
                      wait_for="[data-asin], [data-component-type='s-search-result']")
         if not html:
@@ -246,7 +252,11 @@ def find_products(b: Browser, query: str, pages: int) -> list[str]:
             b.log(f"  ! No products on this page. Amazon's page title was: {b.page.title()!r}. "
                   f"Saved a picture of it: {pic}")
             break
+        new = [a for a in page_asins if a not in asins]
         asins.update(dict.fromkeys(page_asins))
+        if pages == ALL_PAGES and (not new or not has_next_page(html)):
+            b.log(f"That was the last page of results ({p} page{'s' * (p > 1)}, {len(asins)} products).")
+            break
     return list(asins)
 
 

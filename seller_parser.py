@@ -85,6 +85,12 @@ def extract_asins(html: str) -> list[str]:
     return list(seen)
 
 
+def has_next_page(html: str) -> bool:
+    """Whether a search results page shows a working "Next" button."""
+    nxt = BeautifulSoup(html, "html.parser").select_one(".s-pagination-next")
+    return nxt is not None and "s-pagination-disabled" not in (nxt.get("class") or [])
+
+
 def _lines(el: Tag | None) -> list[str]:
     if el is None:
         return []

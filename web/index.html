@@ -123,10 +123,11 @@
             <select id="pages">
               <option value="1">1</option><option value="2">2</option><option value="3">3</option>
               <option value="5">5</option><option value="10">10</option>
+              <option value="all">All</option>
             </select>
           </div>
         </div>
-        <p class="hint">1 page ≈ 50 products ≈ 50–150 stores ≈ 20–30 minutes.</p>
+        <p class="hint" id="pages-hint">1 page ≈ 50 products ≈ 50–150 stores ≈ 20–30 minutes.</p>
       </div>
 
       <div id="mode-links" hidden>
@@ -209,6 +210,9 @@ $("filter").oninput = render;
 $("only-phones").onchange = render;
 $("only-new").onchange = render;
 $("show-cleared").onchange = render;
+$("pages").onchange = () => $("pages-hint").textContent = $("pages").value === "all"
+  ? "All pages: keeps going until Amazon runs out of results (usually ~7 pages). Can take a few hours; Stop anytime and everything found is kept."
+  : "1 page ≈ 50 products ≈ 50–150 stores ≈ 20–30 minutes.";
 $("download-new").onclick = () => {
   if (!rows.some(r => r.shared?.state === "new" && !r.cleared)) {
     $("count").textContent = "· No new leads to download yet";
