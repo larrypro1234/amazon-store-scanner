@@ -25,9 +25,9 @@ from seller_parser import (
     SellerInfo, extract_asins, extract_seller_ids, is_captcha, parse_seller_page,
 )
 
-CSV_FIELDS = ["seller_id", "status", "seller_name", "business_name", "phones", "phone_source",
-              "emails", "business_address", "country", "positive_pct", "rating_count", "stars",
-              "storefront_url", "profile_url", "extra_fields", "about_text", "scraped_at"]
+CSV_FIELDS = ["seller_id", "status", "seller_name", "storefront_url", "profile_url", "business_name",
+              "phones", "phone_source", "emails", "business_address", "country", "positive_pct",
+              "rating_count", "stars", "extra_fields", "about_text", "scraped_at"]
 
 PROFILE_DIR = Path(__file__).parent / ".browser-profile"
 
@@ -285,11 +285,15 @@ class SellerChecker:
             "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         new_file = not self.out.exists() or self.out.stat().st_size == 0
+        fields = CSV_FIELDS
+        if not new_file:  # keep the column order the file already has (older versions differ)
+            with self.out.open(newline="", encoding="utf-8") as f:
+                fields = next(csv.reader(f), CSV_FIELDS)
         with self.out.open("a", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+            w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             if new_file:
                 w.writeheader()
-            w.writerow({k: row.get(k, "") for k in CSV_FIELDS})
+            w.writerow({k: row.get(k, "") for k in fields})
         self.skip.add(sid)
         self.checked += 1
         self.with_phone += bool(info.phones)
