@@ -296,6 +296,9 @@ $("update-btn").onclick = async () => {
       const v = await (await fetch("/api/version")).json();
       if (v.boot !== before) { location.reload(); return; }
     } catch {}
+    if (i > 10 && location.port !== "8791") {  // the new copy may be back on the usual address
+      try { await fetch("http://127.0.0.1:8791/api/version", {mode: "no-cors"}); location.href = "http://127.0.0.1:8791/"; return; } catch {}
+    }
   }
   $("version").textContent = "Restart took too long. Open Amazon Scanner again.";
 };

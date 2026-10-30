@@ -10,6 +10,7 @@ import os
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from collections import deque
 from datetime import datetime
@@ -160,14 +161,22 @@ def download():
     return send_file(out, as_attachment=True, download_name=name)
 
 
-def free_port(preferred: int) -> int:
-    with socket.socket() as s:
-        try:
-            s.bind(("127.0.0.1", preferred))
-            return preferred
-        except OSError:
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
+def free_port(preferred: int, wait: float = 15) -> int:
+    """The preferred port, waiting while a just-restarted copy of this app releases it."""
+    deadline = time.time() + wait
+    while True:
+        with socket.socket() as s:
+            # Same option the server uses, so connections still closing from the previous
+            # copy (TIME_WAIT, common on macOS right after a restart) don't count as "in use".
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(("127.0.0.1", preferred))
+                return preferred
+            except OSError:
+                if time.time() >= deadline:  # something else really has it
+                    s.bind(("127.0.0.1", 0))
+                    return s.getsockname()[1]
+        time.sleep(0.5)
 
 
 @app.get("/api/version")
