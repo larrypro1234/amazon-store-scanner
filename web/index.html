@@ -88,6 +88,9 @@
   .empty { text-align: center; color: var(--muted); padding: 40px 10px; }
   .top { display: flex; justify-content: space-between; align-items: start; gap: 16px; flex-wrap: wrap; }
   .update { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
+  .spot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--accent-soft);
+          border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-weight: 600; }
+  .spot span { flex: 1; }
   .err { color: var(--bad); font-size: 14px; margin-top: 10px; min-height: 1em; }
 </style>
 </head>
@@ -138,10 +141,8 @@
 
       <div class="btns">
         <button class="primary" id="start">Start scan</button>
-        <button class="ghost" id="quick" title="Stops by itself after 10 new leads">Find 10 new leads</button>
         <button class="ghost stop" id="stop" hidden>Stop</button>
       </div>
-      <p class="hint">“Find 10 new leads” is a quick check: it stops by itself after 10, so you can spot-check them.</p>
       <div class="err" id="err"></div>
     </div>
 
@@ -166,9 +167,15 @@
       <label class="check"><input type="checkbox" id="only-phones" checked> Only with phone</label>
       <label class="check"><input type="checkbox" id="only-new"> Only new leads</label>
       <label class="check"><input type="checkbox" id="show-cleared"> Show cleared</label>
+      <button class="ghost" id="spot-btn">Spot check 10</button>
       <button class="primary" id="download-new">Download new leads</button>
       <a class="ghost" href="/api/download?phones=1">Download phones</a>
       <a class="ghost" href="/api/download">Download all</a>
+    </div>
+    <div class="spot" id="spot-banner" hidden>
+      <span id="spot-text"></span>
+      <button class="ghost" id="spot-again">Pick another 10</button>
+      <button class="ghost" id="spot-done">Done</button>
     </div>
     <div class="table-wrap">
       <table>
@@ -195,28 +202,40 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   $("mode-links").hidden = mode !== "links";
 });
 
-let quickScan = false;
-async function startScan(stopAfter) {
+$("start").onclick = async () => {
   $("err").textContent = "";
   const res = await fetch("/api/scan", {
     method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({mode, query: $("query").value, links: $("links").value,
-                          pages: stopAfter ? "all" : $("pages").value, stop_after: stopAfter}),
+    body: JSON.stringify({mode, query: $("query").value, pages: $("pages").value, links: $("links").value}),
   });
   const data = await res.json();
   if (!res.ok) { $("err").textContent = data.error; return; }
-  quickScan = !!stopAfter;
   lastDone = -1;
   startPolling();
-}
-$("start").onclick = () => startScan(0);
-$("quick").onclick = () => startScan(10);
+};
 $("query").onkeydown = e => { if (e.key === "Enter") $("start").click(); };
 $("stop").onclick = () => fetch("/api/stop", {method: "POST"}).then(refreshStatus);
 $("filter").oninput = render;
 $("only-phones").onchange = render;
 $("only-new").onchange = render;
 $("show-cleared").onchange = render;
+
+// Spot check: a random sample of the new leads waiting to be downloaded, to verify by hand.
+let spot = null;
+function pickSpot() {
+  let pool = rows.filter(r => r.shared?.state === "new" && !r.cleared), kind = "new leads";
+  if (!pool.length) { pool = rows.filter(r => r.phones); kind = "stores with a phone"; }
+  if (!pool.length) { $("count").textContent = "· Nothing to spot check yet: run a scan first"; return; }
+  const sample = [...pool].sort(() => Math.random() - 0.5).slice(0, 10);
+  spot = new Set(sample.map(r => r.seller_id));
+  $("spot-text").textContent = `Spot check: ${sample.length} random ${kind} out of ${pool.length}. ` +
+    "Open each Seller page and check the number matches Amazon.";
+  $("spot-banner").hidden = false;
+  render();
+}
+$("spot-btn").onclick = pickSpot;
+$("spot-again").onclick = pickSpot;
+$("spot-done").onclick = () => { spot = null; $("spot-banner").hidden = true; render(); };
 $("pages").onchange = () => $("pages-hint").textContent = $("pages").value === "all"
   ? "All pages: keeps going until Amazon runs out of results (usually ~7 pages). Can take a few hours; Stop anytime and everything found is kept."
   : "1 page ≈ 50 products ≈ 50–150 stores ≈ 20–30 minutes.";
@@ -238,13 +257,8 @@ async function refreshStatus() {
   const s = await (await fetch("/api/status")).json();
   $("phase").textContent = PHASES[s.phase] || s.phase;
   $("dot").classList.toggle("live", s.running);
-  $("start").disabled = $("quick").disabled = s.running;
+  $("start").disabled = s.running;
   $("stop").hidden = !s.running;
-  if (quickScan && !s.running) {  // quick check finished: show just its new leads to spot-check
-    quickScan = false;
-    $("only-new").checked = true;
-    $("show-cleared").checked = false;
-  }
   $("s-checked").textContent = s.total ? `${s.done} / ${s.total}` : s.done;
   $("s-phones").textContent = s.phones;
   $("bar").style.width = s.total ? `${(100 * s.done / s.total).toFixed(1)}%`
@@ -276,7 +290,7 @@ function render() {
   const q = $("filter").value.trim().toLowerCase();
   const onlyPhones = $("only-phones").checked, onlyNew = $("only-new").checked;
   const showCleared = $("show-cleared").checked;
-  const shown = rows.filter(r => (showCleared || !r.cleared) &&
+  const shown = spot ? rows.filter(r => spot.has(r.seller_id)) : rows.filter(r => (showCleared || !r.cleared) &&
     (!onlyPhones || r.phones) && (!onlyNew || r.shared?.state === "new") &&
     (!q || [r.seller_name, r.business_name, r.phones, r.emails, r.business_address].join(" ").toLowerCase().includes(q)));
   const withPhone = rows.filter(r => r.phones).length;
