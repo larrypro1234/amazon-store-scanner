@@ -152,8 +152,8 @@
       <div class="status-line"><span class="dot" id="dot"></span><span id="phase">Ready</span></div>
       <div class="bar"><div id="bar"></div></div>
       <div class="stats">
-        <div class="stat"><b id="s-checked">0</b><span>stores checked / found so far</span></div>
-        <div class="stat good"><b id="s-phones">0</b><span>new leads</span></div>
+        <div class="stat"><b id="s-checked">0</b><span id="s-checked-label">stores checked / found so far</span></div>
+        <div class="stat good"><b id="s-phones">0</b><span id="s-phones-label">new leads</span></div>
       </div>
       <p class="hint" id="captcha-tip">Chrome works minimized in your Dock. If Amazon asks you to type letters, the window pops up: do it there and the scan keeps going by itself.</p>
       <details><summary>Show details</summary><pre class="log" id="log">Nothing yet.</pre></details>
@@ -191,7 +191,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let mode = "search", rows = [], lastDone = -1, polling = null;
+let mode = "search", rows = [], lastDone = -1, wasRunning = false;
 
 const PHASES = {
   idle: "Ready", finding: "Finding stores…", checking: "Going through products and checking their stores…",
@@ -261,13 +261,14 @@ $("download-new").onclick = () => {
   setTimeout(loadResults, 1500);               // ...so they disappear from the table
 };
 
-function startPolling() {
-  if (!polling) polling = setInterval(refreshStatus, 2000);
-  refreshStatus();
-}
+// The page always watches the app, so work that starts by itself (like the re-check after an
+// update) shows up too.
+function startPolling() { refreshStatus(); }
+setInterval(refreshStatus, 2000);
 
 async function refreshStatus() {
-  const s = await (await fetch("/api/status")).json();
+  let s;
+  try { s = await (await fetch("/api/status")).json(); } catch { return; }  // app restarting
   $("phase").textContent = PHASES[s.phase] || s.phase;
   $("dot").classList.toggle("live", s.running);
   $("start").disabled = $("recheck-btn").disabled = s.running;
@@ -279,8 +280,12 @@ async function refreshStatus() {
   const log = $("log"), atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 5;
   log.textContent = s.log.length ? s.log.join("\n") : "Nothing yet.";
   if (atBottom) log.scrollTop = log.scrollHeight;
-  if (s.done !== lastDone || !s.running) { lastDone = s.done; loadResults(); }
-  if (!s.running && polling) { clearInterval(polling); polling = null; }
+  const rechecking = s.phase === "rechecking" || s.log.some(l => l.includes("Re-checking"));
+  $("s-checked-label").textContent = rechecking ? "leads re-checked" : "stores checked / found so far";
+  $("s-phones-label").textContent = rechecking ? "removed by re-check" : "new leads";
+  // Reload the table while something runs, and once more when it finishes.
+  if ((s.running && s.done !== lastDone) || (wasRunning && !s.running)) { lastDone = s.done; loadResults(); }
+  wasRunning = s.running;
 }
 
 async function loadResults() {
@@ -403,6 +408,7 @@ $("update-btn").onclick = async () => {
 checkVersion();
 setInterval(checkVersion, 30 * 60 * 1000);
 startPolling();
+loadResults();
 </script>
 </body>
 </html>

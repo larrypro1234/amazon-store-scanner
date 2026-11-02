@@ -100,7 +100,13 @@ class Scan:
             for i, r in enumerate(waiting, 1):
                 sid = r["seller_id"]
                 self.log(f"Lead {i}/{len(waiting)} {r.get('seller_name') or sid}")
-                departments = checker.departments(sid)
+                try:
+                    departments = checker.departments(sid)
+                except scraper.Stopped:
+                    raise
+                except Exception as e:  # one bad page shouldn't end the re-check
+                    self.log(f"  ! Couldn't read this store ({e}); it'll be re-checked next time.")
+                    departments = None
                 reason = rules.violation(r, departments)
                 if reason:
                     mark_deleted(sid, f"Removed by re-check: {reason}")
