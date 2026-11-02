@@ -106,3 +106,4 @@ def test_departments_and_media_only():
     assert not is_media_only(parse_departments(mixed))           # sells something else too: still a lead
     assert parse_departments("<div>no menu</div>") == []
     assert not is_media_only([])                                 # couldn't tell: never banned
+    assert is_media_only(["Books", "CDs & Vinyl"])               # music counts as media too

@@ -148,7 +148,7 @@ def test_media_only_seller_is_rejected_in_shared_list(db_file):
     con = sqlite3.connect(db_file)
     phone, details, source, _ = con.execute("SELECT * FROM numbers WHERE phone='5125550100'").fetchone()
     assert source == "Rejected by Amazon app"
-    assert details.startswith("Rejected: Only sells books, movies & video games · Toy Depot")
+    assert details.startswith("Rejected: Only sells books, movies, music & video games · Toy Depot")
     assert con.execute("SELECT COUNT(*) FROM leads WHERE key='5125550100'").fetchone()[0] == 0
     # Walmart's rows are exactly as they were
     after = dump(db_file)

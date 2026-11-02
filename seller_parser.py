@@ -85,9 +85,9 @@ def extract_asins(html: str) -> list[str]:
     return list(seen)
 
 
-# Departments that make a store a "media-only" seller (books, movies, video games).
+# Departments that make a store a "media-only" seller (books, movies, music, video games).
 MEDIA_DEPARTMENTS = {"books", "kindle store", "audible books & originals", "movies & tv", "prime video",
-                     "video games"}
+                     "cds & vinyl", "digital music", "video games"}
 
 
 def parse_departments(html: str) -> list[str]:

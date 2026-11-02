@@ -18,7 +18,7 @@ from seller_parser import is_media_only
 DB_FILE = Path.home() / "SellerFinderData" / "numbers.db"
 SOURCE_FOUND = "Found by Amazon app"
 SOURCE_REJECTED = "Rejected by Amazon app"
-MEDIA_ONLY_REASON = "Only sells books, movies & video games"
+MEDIA_ONLY_REASON = "Only sells books, movies, music & video games"
 
 
 def db() -> sqlite3.Connection:

@@ -33,8 +33,8 @@ the Walmart Seller Finder, at the moment the store is checked:
 - **Already have this number**: either app found it before. Nothing is written.
 - **No US phone** / **no phone**: nothing is written (the shared list holds US 10-digit numbers only).
 - **Banned**: before a store becomes a new lead, its storefront's Department menu is read. If it only
-  sells books, movies and video games (Books, Kindle Store, Audible, Movies & TV, Prime Video, Video
-  Games), its number is saved as `Rejected by Amazon app` with the reason, so both apps skip it.
+  sells books, movies, music and video games (Books, Kindle Store, Audible, Movies & TV, Prime Video,
+  CDs & Vinyl, Digital Music, Video Games), its number is saved as `Rejected by Amazon app` with the reason, so both apps skip it.
 
 On its first start, the app adds the numbers it found before this existed (once). It never deletes or
 changes rows, never changes a lead's status, and never writes to the Walmart app's `searches` table.

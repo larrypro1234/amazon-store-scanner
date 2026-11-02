@@ -272,7 +272,7 @@ def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
 
 
 STATUS_TEXT = {
-    "new_lead": "NEW LEAD", "rejected": "BANNED: only sells books, movies & video games", "known": "already have this number", "no_us_phone": "no US phone",
+    "new_lead": "NEW LEAD", "rejected": "BANNED: only sells books, movies, music & video games", "known": "already have this number", "no_us_phone": "no US phone",
     "no_phone": "no phone", "not_found": "store not found", "captcha": "blocked by Amazon",
     "db_error": "couldn't reach the shared list",
 }
