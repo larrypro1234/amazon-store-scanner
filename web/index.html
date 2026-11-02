@@ -276,12 +276,13 @@ async function loadResults() {
 }
 
 const TAGS = {
-  new_lead: ["New lead", "tag-new"], known: ["Already have this number", "tag-known"],
+  new_lead: ["New lead", "tag-new"], rejected: ["Banned: only books, movies & games", "tag-bad"], known: ["Already have this number", "tag-known"],
   no_us_phone: ["No US phone", "tag-known"], db_error: ["Not checked against shared list", "tag-bad"],
 };
 // Live status against the shared seller list, read each time the page loads.
 const SHARED_TAGS = {
   new: ["New lead", "tag-new"], had: ["Already had · {source}", "tag-known"],
+  rejected: ["Banned: only books, movies & games", "tag-bad"],
   missing: ["Not in shared list", "tag-bad"], no_us_phone: ["No US phone", "tag-known"],
 };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));

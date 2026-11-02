@@ -79,3 +79,30 @@ def test_has_next_page():
     assert has_next_page('<a class="s-pagination-item s-pagination-next" href="/s?k=x&page=2">Next</a>')
     assert not has_next_page('<span class="s-pagination-item s-pagination-next s-pagination-disabled">Next</span>')
     assert not has_next_page('<div>no pagination</div>')
+
+
+MULTI_DEPT = '''<div id="departments"><ul>
+  <li><span class="a-list-item"><a href="#"><span class="a-size-base a-color-base">Books</span></a></span></li>
+  <li><span class="a-list-item"><a href="#"><span class="a-size-base a-color-base">Movies &amp; TV</span></a></span></li>
+  <li><span class="a-list-item"><a href="#"><span class="a-size-base a-color-base">Video Games</span></a></span></li>
+</ul></div>'''
+
+SINGLE_DEPT = '''<div id="departments"><ul>
+  <li><span class="a-list-item"><a href="#"><span class="a-size-base a-color-base">‹ Any Department</span></a></span></li>
+  <li><span class="a-list-item"><span class="a-size-base a-color-base a-text-bold">Books</span></span></li>
+  <li><span class="a-list-item"><a href="#"><span class="a-size-base a-color-base">Literature &amp; Fiction</span></a></span></li>
+  <li><span class="a-list-item"><a href="#"><span class="a-size-base a-color-base">Children's Books</span></a></span></li>
+</ul></div>'''
+
+
+def test_departments_and_media_only():
+    from seller_parser import is_media_only, parse_departments
+    assert parse_departments(MULTI_DEPT) == ["Books", "Movies & TV", "Video Games"]
+    assert is_media_only(parse_departments(MULTI_DEPT))
+    assert parse_departments(SINGLE_DEPT) == ["Books"]          # sub-categories don't count
+    assert is_media_only(parse_departments(SINGLE_DEPT))
+    mixed = MULTI_DEPT.replace("Video Games", "Toys &amp; Games")
+    assert parse_departments(mixed) == ["Books", "Movies & TV", "Toys & Games"]
+    assert not is_media_only(parse_departments(mixed))           # sells something else too: still a lead
+    assert parse_departments("<div>no menu</div>") == []
+    assert not is_media_only([])                                 # couldn't tell: never banned

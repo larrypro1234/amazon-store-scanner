@@ -13,8 +13,12 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from seller_parser import is_media_only
+
 DB_FILE = Path.home() / "SellerFinderData" / "numbers.db"
 SOURCE_FOUND = "Found by Amazon app"
+SOURCE_REJECTED = "Rejected by Amazon app"
+MEDIA_ONLY_REASON = "Only sells books, movies & video games"
 
 
 def db() -> sqlite3.Connection:
@@ -74,6 +78,8 @@ def shared_state(row: dict, sources: dict[str, str]) -> dict:
         return {"state": "missing"}
     if all(src == SOURCE_FOUND for src in hits):
         return {"state": "new", "source": SOURCE_FOUND}
+    if all(src == SOURCE_REJECTED for src in hits):
+        return {"state": "rejected", "source": SOURCE_REJECTED}
     return {"state": "had", "source": next(src for src in hits if src != SOURCE_FOUND) or "shared list"}
 
 
@@ -115,7 +121,7 @@ def lead_from_row(row: dict, phone: str, found_from: str = "", found_from_url: s
         "rating": row.get("stars", ""),
         "review_count": row.get("rating_count", ""),
         "seller_url": row.get("profile_url", ""),
-        "store_mix": "",
+        "store_mix": row.get("store_mix", ""),
         "found_from": found_from,
         "found_from_url": found_from_url,
         "keywords": keywords,
@@ -128,11 +134,14 @@ def details_for(row: dict) -> str:
     return " · ".join(p for p in parts if p)
 
 
-def record_seller(row: dict, found_from: str = "", found_from_url: str = "", keywords: str = "") -> str:
+def record_seller(row: dict, found_from: str = "", found_from_url: str = "", keywords: str = "",
+                  get_departments=None) -> str:
     """Decide what a freshly scraped seller is, saving it to the shared database when it's a new lead.
 
-    Returns "new_lead", "known" (already have this number), "no_us_phone", or "no_phone".
-    The check against `numbers` happens right now, not from a cached copy.
+    Returns "new_lead", "rejected" (sells only books/movies/video games), "known" (already have this
+    number), "no_us_phone", or "no_phone". The check against `numbers` happens right now, not from a
+    cached copy. `get_departments` (called only for would-be new leads) returns the store's departments,
+    or None when the storefront couldn't be read; then the seller is not rejected.
     """
     raw = [p for p in (row.get("phones") or "").split(" | ") if p]
     if not raw:
@@ -142,7 +151,15 @@ def record_seller(row: dict, found_from: str = "", found_from_url: str = "", key
         return "no_us_phone"
     if any(is_known(n) for n in us):
         return "known"
+    departments = get_departments() if get_departments else None
+    if departments:
+        row["store_mix"] = " · ".join(departments)
     details = details_for(row)
+    if departments and is_media_only(departments):
+        # A real reason about the seller: saved as rejected so both apps skip it from now on.
+        for n in us:
+            add_number(n, f"Rejected: {MEDIA_ONLY_REASON} · {details}", SOURCE_REJECTED)
+        return "rejected"
     for n in us:
         add_number(n, details)
     add_lead(lead_from_row(row, us[0], found_from, found_from_url, keywords))

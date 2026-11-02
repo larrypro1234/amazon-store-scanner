@@ -85,6 +85,36 @@ def extract_asins(html: str) -> list[str]:
     return list(seen)
 
 
+# Departments that make a store a "media-only" seller (books, movies, video games).
+MEDIA_DEPARTMENTS = {"books", "kindle store", "audible books & originals", "movies & tv", "prime video",
+                     "video games"}
+
+
+def parse_departments(html: str) -> list[str]:
+    """Top-level departments listed in the left "Department" menu of a store's storefront page.
+
+    When everything a store sells is in one department, Amazon narrows the menu to that department
+    (shown in bold, under "Any Department") followed by its sub-categories; only the bold one counts then.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    box = soup.select_one("#departments") or soup.select_one("[aria-labelledby='n-title']")
+    if box is None:
+        return []
+    items = []
+    for li in box.select("li"):
+        text = " ".join(li.get_text(" ").split())
+        if not text or text.lower().startswith(("any department", "see more", "see less", "‹")):
+            continue
+        bold = li.select_one(".a-text-bold")
+        items.append((text, bold is not None))
+    selected = [t for t, is_bold in items if is_bold]
+    return selected[:1] if selected else [t for t, _ in items]
+
+
+def is_media_only(departments: list[str]) -> bool:
+    return bool(departments) and all(d.lower() in MEDIA_DEPARTMENTS for d in departments)
+
+
 def has_next_page(html: str) -> bool:
     """Whether a search results page shows a working "Next" button."""
     nxt = BeautifulSoup(html, "html.parser").select_one(".s-pagination-next")

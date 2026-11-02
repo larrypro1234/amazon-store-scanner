@@ -23,12 +23,13 @@ from urllib.parse import quote_plus
 
 import shared_db
 from seller_parser import (
-    SellerInfo, extract_asins, extract_seller_ids, has_next_page, is_captcha, parse_seller_page,
+    SellerInfo, extract_asins, extract_seller_ids, has_next_page, is_captcha, parse_departments,
+    parse_seller_page,
 )
 
 CSV_FIELDS = ["seller_id", "status", "seller_name", "storefront_url", "profile_url", "business_name",
               "phones", "phone_source", "emails", "business_address", "country", "positive_pct",
-              "rating_count", "stars", "extra_fields", "about_text", "scraped_at"]
+              "rating_count", "stars", "store_mix", "extra_fields", "about_text", "scraped_at"]
 
 PROFILE_DIR = Path(__file__).parent / ".browser-profile"
 
@@ -271,7 +272,7 @@ def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
 
 
 STATUS_TEXT = {
-    "new_lead": "NEW LEAD", "known": "already have this number", "no_us_phone": "no US phone",
+    "new_lead": "NEW LEAD", "rejected": "BANNED: only sells books, movies & video games", "known": "already have this number", "no_us_phone": "no US phone",
     "no_phone": "no phone", "not_found": "store not found", "captcha": "blocked by Amazon",
     "db_error": "couldn't reach the shared list",
 }
@@ -325,7 +326,8 @@ class SellerChecker:
         }
         if self.shared and status == "ok":  # a page that failed to load is never saved
             try:
-                row["status"] = shared_db.record_seller(row, found_from, found_from_url, keywords)
+                row["status"] = shared_db.record_seller(row, found_from, found_from_url, keywords,
+                                                        get_departments=lambda: self._departments(sid))
             except Exception as e:
                 row["status"] = "db_error"
                 b.log(f"  ! Couldn't reach the shared seller list: {e}")
@@ -348,6 +350,15 @@ class SellerChecker:
         b.log(f"  Store {self.checked}/{self.queued} {info.seller_name or sid}: "
               f"{phones + ' — ' if phones else ''}{STATUS_TEXT.get(status, status)}")
         self._report()
+
+    def _departments(self, sid: str) -> list[str] | None:
+        """What the store sells, from its storefront's Department menu (None if it couldn't be read)."""
+        b = self.b
+        html = b.get(f"https://{b.domain}/s?me={sid}", name=f"store-{sid}",
+                     wait_for="#departments, [data-asin]")
+        departments = parse_departments(html) if html else []
+        b.log(f"    Sells: {', '.join(departments) if departments else 'could not read departments'}")
+        return departments or None
 
     def _report(self) -> None:
         if self.on_progress:

@@ -138,3 +138,33 @@ def test_lookup_is_read_only_and_handles_many_numbers(db_file):
     many = [f"{5550000000 + i}" for i in range(1200)] + ["9175921495"]
     assert shared_db.lookup(many) == {"9175921495": "Found by Walmart app"}
     assert dump(db_file) == before
+
+
+def test_media_only_seller_is_rejected_in_shared_list(db_file):
+    walmart_rows(db_file)
+    before = dump(db_file)
+    status = shared_db.record_seller(row("+1 512-555-0100"), get_departments=lambda: ["Books", "Movies & TV"])
+    assert status == "rejected"
+    con = sqlite3.connect(db_file)
+    phone, details, source, _ = con.execute("SELECT * FROM numbers WHERE phone='5125550100'").fetchone()
+    assert source == "Rejected by Amazon app"
+    assert details.startswith("Rejected: Only sells books, movies & video games · Toy Depot")
+    assert con.execute("SELECT COUNT(*) FROM leads WHERE key='5125550100'").fetchone()[0] == 0
+    # Walmart's rows are exactly as they were
+    after = dump(db_file)
+    assert [r for r in after["numbers"] if r[0] != "5125550100"] == before["numbers"]
+    assert after["leads"] == before["leads"] and after["searches"] == before["searches"]
+    # next time this seller turns up (in either app) it's already known
+    assert shared_db.record_seller(row("+1 512-555-0100")) == "known"
+    assert shared_db.shared_state(row("+1 512-555-0100"), shared_db.lookup(["5125550100"]))["state"] == "rejected"
+
+
+def test_seller_with_other_departments_is_a_lead_with_store_mix(db_file):
+    status = shared_db.record_seller(row("+1 512-555-0100"), get_departments=lambda: ["Books", "Toys & Games"])
+    assert status == "new_lead"
+    con = sqlite3.connect(db_file)
+    assert json.loads(con.execute("SELECT data FROM leads").fetchone()[0])["store_mix"] == "Books · Toys & Games"
+
+
+def test_unreadable_storefront_is_not_rejected(db_file):
+    assert shared_db.record_seller(row("+1 512-555-0100"), get_departments=lambda: None) == "new_lead"
