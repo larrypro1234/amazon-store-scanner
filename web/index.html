@@ -138,8 +138,10 @@
 
       <div class="btns">
         <button class="primary" id="start">Start scan</button>
+        <button class="ghost" id="quick" title="Stops by itself after 10 new leads">Find 10 new leads</button>
         <button class="ghost stop" id="stop" hidden>Stop</button>
       </div>
+      <p class="hint">“Find 10 new leads” is a quick check: it stops by itself after 10, so you can spot-check them.</p>
       <div class="err" id="err"></div>
     </div>
 
@@ -193,17 +195,22 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   $("mode-links").hidden = mode !== "links";
 });
 
-$("start").onclick = async () => {
+let quickScan = false;
+async function startScan(stopAfter) {
   $("err").textContent = "";
   const res = await fetch("/api/scan", {
     method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({mode, query: $("query").value, pages: $("pages").value, links: $("links").value}),
+    body: JSON.stringify({mode, query: $("query").value, links: $("links").value,
+                          pages: stopAfter ? "all" : $("pages").value, stop_after: stopAfter}),
   });
   const data = await res.json();
   if (!res.ok) { $("err").textContent = data.error; return; }
+  quickScan = !!stopAfter;
   lastDone = -1;
   startPolling();
-};
+}
+$("start").onclick = () => startScan(0);
+$("quick").onclick = () => startScan(10);
 $("query").onkeydown = e => { if (e.key === "Enter") $("start").click(); };
 $("stop").onclick = () => fetch("/api/stop", {method: "POST"}).then(refreshStatus);
 $("filter").oninput = render;
@@ -231,8 +238,13 @@ async function refreshStatus() {
   const s = await (await fetch("/api/status")).json();
   $("phase").textContent = PHASES[s.phase] || s.phase;
   $("dot").classList.toggle("live", s.running);
-  $("start").disabled = s.running;
+  $("start").disabled = $("quick").disabled = s.running;
   $("stop").hidden = !s.running;
+  if (quickScan && !s.running) {  // quick check finished: show just its new leads to spot-check
+    quickScan = false;
+    $("only-new").checked = true;
+    $("show-cleared").checked = false;
+  }
   $("s-checked").textContent = s.total ? `${s.done} / ${s.total}` : s.done;
   $("s-phones").textContent = s.phones;
   $("bar").style.width = s.total ? `${(100 * s.done / s.total).toFixed(1)}%`

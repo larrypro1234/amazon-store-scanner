@@ -53,37 +53,49 @@ class Scan:
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def start(self, mode: str, query: str, pages: int, links: list[str], domain: str) -> None:
+    def start(self, mode: str, query: str, pages: int, links: list[str], domain: str,
+              stop_after: int = 0) -> None:
         self.stop_requested = False
         self.done = self.total = self.phones = 0
         self.log_lines.clear()
-        self.thread = threading.Thread(target=self._run, args=(mode, query, pages, links, domain),
+        self.thread = threading.Thread(target=self._run, args=(mode, query, pages, links, domain, stop_after),
                                        daemon=True)
         self.thread.start()
 
     def _progress(self, done: int, total: int, phones: int) -> None:
         self.done, self.total, self.phones = done, total, phones
 
-    def _run(self, mode, query, pages, links, domain) -> None:
+    def _run(self, mode, query, pages, links, domain, stop_after=0) -> None:
         b = None
         try:
             self.phase = "finding"
             self.log("Opening Chrome...")
             b = scraper.Browser(domain, headless=False, min_delay=4, max_delay=9, save_html=None,
                                 log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
-            checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress, shared=True)
+            checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress, shared=True,
+                                            limit=stop_after)
+            if stop_after:
+                self.log(f"Quick check: stops after {stop_after} new leads.")
             if mode == "search":
                 how_many = "all pages" if pages == scraper.ALL_PAGES else f'{pages} page{"s" * (pages > 1)}'
                 self.log(f'Searching Amazon for "{query}" ({how_many})')
-                asins = scraper.find_products(b, query, pages)
                 self.phase = "checking"
-                # Check each product's stores right away so numbers show up as the scan goes.
-                for _, _, asin, title, new_sellers in scraper.iter_product_sellers(b, asins):
-                    checker.check(new_sellers, found_from=f'"{query}" search: {title}',
-                                  found_from_url=f"https://{domain}/dp/{asin}", keywords=query)
+                seen: set[str] = set()
+                # One results page at a time: check its products' stores before loading the next page,
+                # so numbers show up as the scan goes.
+                for page_asins in scraper.iter_search_pages(b, query, pages):
+                    for _, _, asin, title, new_sellers in scraper.iter_product_sellers(b, page_asins, seen):
+                        checker.check(new_sellers, found_from=f'"{query}" search: {title}',
+                                      found_from_url=f"https://{domain}/dp/{asin}", keywords=query)
+                        if checker.reached:
+                            break
+                    if checker.reached:
+                        break
             else:
                 self.phase = "checking"
                 checker.check([scraper.to_seller_id(s) for s in links], found_from="Pasted store link")
+            if checker.reached:
+                self.log(f"Found {stop_after} new leads, stopping here so you can spot-check them.")
             checker.finish()
             self.phase = "done"
         except scraper.Stopped:
@@ -159,7 +171,8 @@ def start_scan():
         return jsonify(error="Type what to search for."), 400
     if mode == "links" and not links:
         return jsonify(error="Paste at least one store link."), 400
-    scan.start(mode, query, pages, links, domain)
+    stop_after = max(0, min(1000, int(body.get("stop_after") or 0)))
+    scan.start(mode, query, pages, links, domain, stop_after)
     return jsonify(ok=True)
 
 

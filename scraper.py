@@ -208,9 +208,9 @@ def expand_offers(b: Browser, max_rounds: int = 8) -> None:
             return
 
 
-def iter_product_sellers(b: Browser, asins: list[str]):
+def iter_product_sellers(b: Browser, asins: list[str], seen: set[str] | None = None):
     """For each product, yield (index, total, asin, product title, seller IDs not seen earlier in this run)."""
-    seen: set[str] = set()
+    seen = set() if seen is None else seen
     for i, asin in enumerate(asins, 1):
         # "?aod=1" opens the product page with its "All offers" panel showing: the featured
         # seller and every other seller of this product are linked on one page.
@@ -236,28 +236,34 @@ ALL_PAGES = 0
 MAX_PAGES = 50  # safety cap for "all pages"
 
 
-def find_products(b: Browser, query: str, pages: int) -> list[str]:
-    """Products from the first `pages` search result pages; pages=ALL_PAGES keeps going until the last one."""
+def iter_search_pages(b: Browser, query: str, pages: int):
+    """Yield each search results page's new products, one page at a time, so they can be checked
+    before the next page loads. pages=ALL_PAGES keeps going until the last page."""
     asins: dict[str, None] = {}
     last = MAX_PAGES if pages == ALL_PAGES else pages
     for p in range(1, last + 1):
         html = b.get(f"https://{b.domain}/s?k={quote_plus(query)}&page={p}", name=f"search-{p}",
                      wait_for="[data-asin], [data-component-type='s-search-result']")
         if not html:
-            break
+            return
         page_asins = extract_asins(html)
         b.log(f"Search page {p}: {len(page_asins)} products")
         if not page_asins:
             pic = b.debug_snapshot(f"search-page-{p}")
             b.log(f"  ! No products on this page. Amazon's page title was: {b.page.title()!r}. "
                   f"Saved a picture of it: {pic}")
-            break
+            return
         new = [a for a in page_asins if a not in asins]
         asins.update(dict.fromkeys(page_asins))
+        if new:
+            yield new
         if pages == ALL_PAGES and (not new or not has_next_page(html)):
             b.log(f"That was the last page of results ({p} page{'s' * (p > 1)}, {len(asins)} products).")
-            break
-    return list(asins)
+            return
+
+
+def find_products(b: Browser, query: str, pages: int) -> list[str]:
+    return [a for page in iter_search_pages(b, query, pages) for a in page]
 
 
 def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
@@ -278,8 +284,9 @@ class SellerChecker:
     at that moment, and new leads are saved there (see shared_db.py).
     """
 
-    def __init__(self, b: Browser, out: Path, on_progress=None, shared: bool = False):
+    def __init__(self, b: Browser, out: Path, on_progress=None, shared: bool = False, limit: int = 0):
         self.b, self.out, self.on_progress, self.shared = b, out, on_progress, shared
+        self.limit = limit  # stop once this many new leads are found (0 = no limit)
         self.skip = already_done(out)
         self.queued = self.checked = self.with_phone = self.new_leads = self.skipped = 0
 
@@ -290,7 +297,13 @@ class SellerChecker:
         self.queued += len(todo)
         self._report()
         for sid in todo:
+            if self.reached:
+                break
             self._check_one(sid, found_from, found_from_url, keywords)
+
+    @property
+    def reached(self) -> bool:
+        return bool(self.limit) and self.new_leads >= self.limit
 
     def _check_one(self, sid: str, found_from: str = "", found_from_url: str = "",
                    keywords: str = "") -> None:
