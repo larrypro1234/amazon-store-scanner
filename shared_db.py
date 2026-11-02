@@ -2,23 +2,24 @@
 
 Both apps open ~/SellerFinderData/numbers.db. Rules: one small operation per connection,
 never delete or rewrite rows, never change a lead's status, US numbers only (10 digits).
+
+This app shares only the `numbers` table (so neither app finds the same number twice). Its leads
+stay in this app for review and are not added to the shared `leads` inbox.
 """
 
 from __future__ import annotations
 
 import csv
-import json
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from seller_parser import is_media_only
+import rules
 
 DB_FILE = Path.home() / "SellerFinderData" / "numbers.db"
 SOURCE_FOUND = "Found by Amazon app"
 SOURCE_REJECTED = "Rejected by Amazon app"
-MEDIA_ONLY_REASON = "Only sells books, movies, music & video games"
 
 
 def db() -> sqlite3.Connection:
@@ -96,52 +97,19 @@ def add_number(phone: str, details: str, source: str = SOURCE_FOUND) -> None:
         con.close()
 
 
-def add_lead(lead: dict) -> None:
-    key = normalize_phone(lead.get("phone")) or lead.get("seller_url") or lead["seller_name"].lower()
-    con = db()
-    try:
-        with con:
-            con.execute("INSERT OR IGNORE INTO leads (key, data, found) VALUES (?, ?, ?)",
-                        (key, json.dumps(lead), datetime.now().strftime("%Y-%m-%d %H:%M")))
-    finally:
-        con.close()
-
-
-def lead_from_row(row: dict, phone: str, found_from: str = "", found_from_url: str = "",
-                  keywords: str = "") -> dict:
-    """The shared `leads.data` object for a seller row from this app (field names fixed by the spec)."""
-    return {
-        "marketplace": "Amazon",
-        "status": "Good",
-        "seller_name": row.get("seller_name") or row.get("business_name") or row.get("seller_id", ""),
-        "business_name": row.get("business_name", ""),
-        "phone": pretty_phone(phone),
-        "email": (row.get("emails") or "").split(" | ")[0],
-        "address": row.get("business_address", ""),
-        "rating": row.get("stars", ""),
-        "review_count": row.get("rating_count", ""),
-        "seller_url": row.get("profile_url", ""),
-        "store_mix": row.get("store_mix", ""),
-        "found_from": found_from,
-        "found_from_url": found_from_url,
-        "keywords": keywords,
-    }
-
-
 def details_for(row: dict) -> str:
     parts = [row.get("seller_name") or row.get("business_name"), row.get("business_address"),
              row.get("profile_url")]
     return " · ".join(p for p in parts if p)
 
 
-def record_seller(row: dict, found_from: str = "", found_from_url: str = "", keywords: str = "",
-                  get_departments=None) -> str:
-    """Decide what a freshly scraped seller is, saving it to the shared database when it's a new lead.
+def record_seller(row: dict, get_departments=None) -> str:
+    """Decide what a freshly scraped seller is, saving its number to the shared list when it's new.
 
-    Returns "new_lead", "rejected" (sells only books/movies/video games), "known" (already have this
-    number), "no_us_phone", or "no_phone". The check against `numbers` happens right now, not from a
-    cached copy. `get_departments` (called only for would-be new leads) returns the store's departments,
-    or None when the storefront couldn't be read; then the seller is not rejected.
+    Returns "new_lead", "rejected" (breaks a rule in rules.py), "known" (already have this number),
+    "no_us_phone", or "no_phone". The check against `numbers` happens right now, not from a cached
+    copy. `get_departments` (called only for would-be new leads) returns the store's departments,
+    or None when the storefront couldn't be read.
     """
     raw = [p for p in (row.get("phones") or "").split(" | ") if p]
     if not raw:
@@ -155,19 +123,20 @@ def record_seller(row: dict, found_from: str = "", found_from_url: str = "", key
     if departments:
         row["store_mix"] = " · ".join(departments)
     details = details_for(row)
-    if departments and is_media_only(departments):
+    reason = rules.violation(row, departments)
+    if reason:
         # A real reason about the seller: saved as rejected so both apps skip it from now on.
         for n in us:
-            add_number(n, f"Rejected: {MEDIA_ONLY_REASON} · {details}", SOURCE_REJECTED)
+            add_number(n, f"Rejected: {reason} · {details}", SOURCE_REJECTED)
+        row["reason"] = reason
         return "rejected"
     for n in us:
         add_number(n, details)
-    add_lead(lead_from_row(row, us[0], found_from, found_from_url, keywords))
     return "new_lead"
 
 
 def import_once(leads_csv: Path, flag: Path) -> int:
-    """Bring numbers this app found before the shared database existed into it, one time only."""
+    """Add numbers this app found before the shared database existed to it, one time only."""
     if flag.exists() or not leads_csv.exists():
         return 0
     added = 0

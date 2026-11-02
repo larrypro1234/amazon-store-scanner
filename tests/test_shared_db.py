@@ -48,23 +48,17 @@ def test_normalize_phone():
     assert shared_db.normalize_phone(None) == ""
 
 
-def test_new_lead_saved_with_spec_fields(db_file):
-    status = shared_db.record_seller(row("+1 512-555-0100"), '"lego" search: LEGO Classic',
-                                     "https://www.amazon.com/dp/B0X", "lego")
-    assert status == "new_lead"
+def test_new_lead_saves_only_the_number(db_file):
+    walmart_rows(db_file)
+    before = dump(db_file)
+    assert shared_db.record_seller(row("+1 512-555-0100")) == "new_lead"
     con = sqlite3.connect(db_file)
-    phone, details, source, added = con.execute("SELECT * FROM numbers").fetchone()
-    assert (phone, source) == ("5125550100", "Found by Amazon app")
+    phone, details, source, added = con.execute("SELECT * FROM numbers WHERE phone='5125550100'").fetchone()
+    assert source == "Found by Amazon app"
     assert details == "Toy Depot · 1 Main St, Austin, TX, 78701, US · https://www.amazon.com/sp?seller=A1"
-    key, data, lead_status, found, lead_added = con.execute("SELECT * FROM leads").fetchone()
-    data = json.loads(data)
-    assert (key, lead_status, lead_added) == ("5125550100", "new", "")
-    assert data == {
-        "marketplace": "Amazon", "status": "Good", "seller_name": "Toy Depot", "business_name": "Toy Depot LLC",
-        "phone": "(512) 555-0100", "email": "sales@example.com", "address": "1 Main St, Austin, TX, 78701, US",
-        "rating": "4.7", "review_count": "312", "seller_url": "https://www.amazon.com/sp?seller=A1",
-        "store_mix": "", "found_from": '"lego" search: LEGO Classic',
-        "found_from_url": "https://www.amazon.com/dp/B0X", "keywords": "lego"}
+    after = dump(db_file)
+    assert after["leads"] == before["leads"]  # Amazon leads stay in this app, not the shared inbox
+    assert [r for r in after["numbers"] if r[0] != "5125550100"] == before["numbers"]
 
 
 def test_number_walmart_already_has_is_not_a_lead_and_walmart_rows_untouched(db_file):
@@ -115,7 +109,7 @@ def test_import_once(db_file, tmp_path):
     assert shared_db.is_known("8772835060")
     assert shared_db.import_once(leads, flag) == 0  # second start: nothing happens
     con = sqlite3.connect(db_file)
-    assert con.execute("SELECT COUNT(*) FROM leads").fetchone()[0] == 2  # Walmart's + the one import
+    assert con.execute("SELECT COUNT(*) FROM leads").fetchone()[0] == 1  # only Walmart's: nothing added
     assert con.execute("SELECT status FROM leads WHERE key='9175921495'").fetchone() == ("added",)
 
 
@@ -160,10 +154,9 @@ def test_media_only_seller_is_rejected_in_shared_list(db_file):
 
 
 def test_seller_with_other_departments_is_a_lead_with_store_mix(db_file):
-    status = shared_db.record_seller(row("+1 512-555-0100"), get_departments=lambda: ["Books", "Toys & Games"])
-    assert status == "new_lead"
-    con = sqlite3.connect(db_file)
-    assert json.loads(con.execute("SELECT data FROM leads").fetchone()[0])["store_mix"] == "Books · Toys & Games"
+    r = row("+1 512-555-0100")
+    assert shared_db.record_seller(r, get_departments=lambda: ["Books", "Toys & Games"]) == "new_lead"
+    assert r["store_mix"] == "Books · Toys & Games"
 
 
 def test_unreadable_storefront_is_not_rejected(db_file):

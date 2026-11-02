@@ -6,3 +6,5 @@ pages/
 *.zip
 *.db
 cleared.json
+deleted.json
+rules-checked.json

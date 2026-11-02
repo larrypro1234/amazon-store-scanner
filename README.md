@@ -25,20 +25,28 @@ If macOS blocks it, go to System Settings → Privacy & Security, scroll down, a
 
 ## Shared seller list (with the Walmart Seller Finder)
 
-The app checks every store's phone against `~/SellerFinderData/numbers.db`, the database it shares with
-the Walmart Seller Finder, at the moment the store is checked:
+The app shares one thing with the Walmart Seller Finder: the list of every number either app already has
+(`numbers` in `~/SellerFinderData/numbers.db`). Each store's phone is checked against it at the moment
+the store is checked:
 
-- **New lead**: a US number neither app has yet. The number is saved (`source = "Found by Amazon app"`)
-  and the store goes into the shared Leads inbox, tagged Amazon.
-- **Already have this number**: either app found it before. Nothing is written.
-- **No US phone** / **no phone**: nothing is written (the shared list holds US 10-digit numbers only).
-- **Banned**: before a store becomes a new lead, its storefront's Department menu is read. If it only
-  sells books, movies, music and video games (Books, Kindle Store, Audible, Movies & TV, Prime Video,
-  CDs & Vinyl, Digital Music, Video Games), its number is saved as `Rejected by Amazon app` with the reason, so both apps skip it.
+- **New lead**: a US number neither app has yet. The number is added (`source = "Found by Amazon app"`),
+  so neither app finds it again. The lead itself stays in this app for you to review and download.
+- **Banned**: before a store becomes a new lead, the rules in `rules.py` run. Today: if its storefront's
+  Department menu shows only books, movies, music and video games (Books, Kindle Store, Audible, Movies &
+  TV, Prime Video, CDs & Vinyl, Digital Music, Video Games), its number is added as
+  `Rejected by Amazon app` with the reason, so both apps skip it.
+- **Already have this number** / **No US phone** / **no phone**: nothing is written.
 
-On its first start, the app adds the numbers it found before this existed (once). It never deletes or
-changes rows, never changes a lead's status, and never writes to the Walmart app's `searches` table.
-`leads.csv` is only this app's scan history (which stores it already visited).
+Amazon leads are not added to the shared Leads inbox. The app never deletes or changes rows in the
+shared database. On its first start it added the numbers it had found before (once).
+
+### Reviewing leads
+
+- **Delete** removes a lead from the list (the number stays in the shared list, so it never comes back).
+  **Show deleted** shows them again, with **Undo delete**.
+- **Re-check leads** runs the current rules again on leads still waiting (not downloaded, not deleted).
+  When a rule is added or changed, `RULES_VERSION` in `rules.py` goes up and the app re-checks waiting
+  leads by itself on its next start (for example right after an update).
 
 ## Command line
 

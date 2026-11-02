@@ -29,7 +29,8 @@ from seller_parser import (
 
 CSV_FIELDS = ["seller_id", "status", "seller_name", "storefront_url", "profile_url", "business_name",
               "phones", "phone_source", "emails", "business_address", "country", "positive_pct",
-              "rating_count", "stars", "store_mix", "extra_fields", "about_text", "scraped_at"]
+              "rating_count", "stars", "store_mix", "found_from", "reason", "extra_fields", "about_text",
+              "scraped_at"]
 
 PROFILE_DIR = Path(__file__).parent / ".browser-profile"
 
@@ -285,8 +286,10 @@ class SellerChecker:
     at that moment, and new leads are saved there (see shared_db.py).
     """
 
-    def __init__(self, b: Browser, out: Path, on_progress=None, shared: bool = False, limit: int = 0):
+    def __init__(self, b: Browser, out: Path, on_progress=None, shared: bool = False, limit: int = 0,
+                 on_status=None):
         self.b, self.out, self.on_progress, self.shared = b, out, on_progress, shared
+        self.on_status = on_status  # called with (seller_id, status) after each store
         self.limit = limit  # stop once this many new leads are found (0 = no limit)
         self.skip = already_done(out)
         self.queued = self.checked = self.with_phone = self.new_leads = self.skipped = 0
@@ -323,11 +326,11 @@ class SellerChecker:
             "profile_url": url,
             "storefront_url": f"https://{b.domain}/s?me={sid}",
             "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "found_from": found_from,
         }
         if self.shared and status == "ok":  # a page that failed to load is never saved
             try:
-                row["status"] = shared_db.record_seller(row, found_from, found_from_url, keywords,
-                                                        get_departments=lambda: self._departments(sid))
+                row["status"] = shared_db.record_seller(row, get_departments=lambda: self.departments(sid))
             except Exception as e:
                 row["status"] = "db_error"
                 b.log(f"  ! Couldn't reach the shared seller list: {e}")
@@ -346,12 +349,14 @@ class SellerChecker:
         self.checked += 1
         self.with_phone += bool(info.phones)
         self.new_leads += status == "new_lead"
+        if self.on_status:
+            self.on_status(sid, status)
         phones = ", ".join(info.phones)
         b.log(f"  Store {self.checked}/{self.queued} {info.seller_name or sid}: "
               f"{phones + ' — ' if phones else ''}{STATUS_TEXT.get(status, status)}")
         self._report()
 
-    def _departments(self, sid: str) -> list[str] | None:
+    def departments(self, sid: str) -> list[str] | None:
         """What the store sells, from its storefront's Department menu (None if it couldn't be read)."""
         b = self.b
         html = b.get(f"https://{b.domain}/s?me={sid}", name=f"store-{sid}",
@@ -370,7 +375,7 @@ class SellerChecker:
             self.b.log(f"Skipped {self.skipped} stores already checked in earlier scans")
         if self.shared:
             self.b.log(f"Done. {self.checked} stores checked: {self.with_phone} had a phone, "
-                       f"{self.new_leads} new leads saved to the shared list.")
+                       f"{self.new_leads} new leads.")
         else:
             self.b.log(f"Done. {self.with_phone}/{self.checked} stores had a phone number.")
 

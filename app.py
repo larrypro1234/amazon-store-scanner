@@ -20,6 +20,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from werkzeug.serving import make_server
 
+import rules
 import scraper
 import shared_db
 import updater
@@ -27,6 +28,8 @@ import updater
 HERE = Path(__file__).parent
 LEADS = HERE / "leads.csv"
 CLEARED = HERE / "cleared.json"  # stores whose lead was already downloaded: hidden, never deleted
+DELETED = HERE / "deleted.json"  # leads removed by hand or by a re-check: {seller_id: {when, reason}}
+RULES_CHECKED = HERE / "rules-checked.json"  # {seller_id: rules version the lead last passed}
 PORT = 8791  # first choice; another free port is used if something else has it
 RESTART_EXIT_CODE = 3  # tells the launcher loop to start the app again after an update
 
@@ -65,6 +68,62 @@ class Scan:
     def _progress(self, done: int, total: int, phones: int) -> None:
         self.done, self.total, self.phones = done, total, phones
 
+    @staticmethod
+    def _on_status(sid: str, status: str) -> None:
+        if status == "new_lead":  # found under today's rules: no re-check needed until they change
+            update_json(RULES_CHECKED, lambda d: d.__setitem__(sid, rules.RULES_VERSION))
+
+    def start_recheck(self, everything: bool) -> None:
+        self.stop_requested = False
+        self.done = self.total = self.phones = 0
+        self.log_lines.clear()
+        self.thread = threading.Thread(target=self._recheck, args=(everything,), daemon=True)
+        self.thread.start()
+
+    def _recheck(self, everything: bool) -> None:
+        """Run the current rules again over the leads still waiting in the list (not downloaded,
+        not deleted). Leads that now break a rule are deleted with the reason."""
+        b = None
+        try:
+            self.phase = "rechecking"
+            waiting = leads_to_recheck(everything)
+            if not waiting:
+                self.log("No waiting leads need re-checking.")
+                self.phase = "done"
+                return
+            self.log(f"Re-checking {len(waiting)} waiting lead{'s' * (len(waiting) > 1)} with the latest rules...")
+            self.log("Opening Chrome...")
+            b = scraper.Browser("www.amazon.com", headless=False, min_delay=4, max_delay=9, save_html=None,
+                                log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
+            checker = scraper.SellerChecker(b, LEADS)
+            removed = 0
+            for i, r in enumerate(waiting, 1):
+                sid = r["seller_id"]
+                self.log(f"Lead {i}/{len(waiting)} {r.get('seller_name') or sid}")
+                departments = checker.departments(sid)
+                reason = rules.violation(r, departments)
+                if reason:
+                    mark_deleted(sid, f"Removed by re-check: {reason}")
+                    removed += 1
+                    self.log(f"  REMOVED: {reason}")
+                elif departments is not None:  # couldn't read the store: try again next time
+                    update_json(RULES_CHECKED, lambda d: d.__setitem__(sid, rules.RULES_VERSION))
+                self._progress(i, len(waiting), removed)
+            self.log(f"Re-check done: {removed} of {len(waiting)} leads removed.")
+            self.phase = "done"
+        except scraper.Stopped:
+            self.log("Stopped. Leads not re-checked yet will be checked next time.")
+            self.phase = "stopped"
+        except Exception as e:
+            self.log(f"Something went wrong: {e}")
+            self.phase = "error"
+        finally:
+            if b is not None:
+                try:
+                    b.close()
+                except Exception:
+                    pass
+
     def _run(self, mode, query, pages, links, domain, stop_after=0) -> None:
         b = None
         try:
@@ -73,7 +132,7 @@ class Scan:
             b = scraper.Browser(domain, headless=False, min_delay=4, max_delay=9, save_html=None,
                                 log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
             checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress, shared=True,
-                                            limit=stop_after)
+                                            limit=stop_after, on_status=self._on_status)
             if stop_after:
                 self.log(f"Quick check: stops after {stop_after} new leads.")
             if mode == "search":
@@ -115,21 +174,46 @@ class Scan:
 scan = Scan()
 
 
-def load_cleared() -> dict[str, str]:
+STATE_LOCK = threading.Lock()  # the scan thread and page requests both update these files
+
+
+def load_json(path: Path) -> dict:
     try:
-        return json.loads(CLEARED.read_text())
+        return json.loads(path.read_text())
     except (FileNotFoundError, ValueError):
         return {}
 
 
+def update_json(path: Path, change) -> None:
+    with STATE_LOCK:
+        data = load_json(path)
+        change(data)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=0))
+        tmp.replace(path)
+
+
+def load_cleared() -> dict[str, str]:
+    return load_json(CLEARED)
+
+
 def mark_cleared(seller_ids: list[str]) -> None:
-    cleared = load_cleared()
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    for sid in seller_ids:
-        cleared.setdefault(sid, stamp)
-    tmp = CLEARED.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cleared, indent=0))
-    tmp.replace(CLEARED)
+    update_json(CLEARED, lambda d: [d.setdefault(sid, stamp) for sid in seller_ids])
+
+
+def mark_deleted(sid: str, reason: str) -> None:
+    """Hide a lead from the list. Its number stays in the shared list, so it never comes back."""
+    entry = {"when": datetime.now().strftime("%Y-%m-%d %H:%M"), "reason": reason}
+    update_json(DELETED, lambda d: d.setdefault(sid, entry))
+
+
+def leads_to_recheck(everything: bool) -> list[dict]:
+    """Leads still waiting in the list; unless `everything`, only those checked under older rules."""
+    checked = load_json(RULES_CHECKED)
+    return [r for r in read_results()
+            if r.get("shared", {}).get("state") == "new" and not r["cleared"] and not r["deleted"]
+            and (everything or checked.get(r["seller_id"], 0) < rules.RULES_VERSION)]
 
 
 def read_results() -> list[dict]:
@@ -145,9 +229,12 @@ def read_results() -> list[dict]:
             r["shared"] = shared_db.shared_state(r, sources)
     except Exception as e:
         print(f"Couldn't read the shared seller list: {e}")
-    cleared = load_cleared()
+    cleared, deleted = load_cleared(), load_json(DELETED)
     for r in rows:
         r["cleared"] = cleared.get(r["seller_id"], "")
+        d = deleted.get(r["seller_id"]) or {}
+        r["deleted"] = d.get("reason", "")
+        r["deleted_when"] = d.get("when", "")
     return rows
 
 
@@ -173,6 +260,30 @@ def start_scan():
         return jsonify(error="Paste at least one store link."), 400
     stop_after = max(0, min(1000, int(body.get("stop_after") or 0)))
     scan.start(mode, query, pages, links, domain, stop_after)
+    return jsonify(ok=True)
+
+
+@app.post("/api/recheck")
+def recheck():
+    if scan.running:
+        return jsonify(error="Wait for the current scan to finish, or stop it first."), 409
+    scan.start_recheck(everything=True)
+    return jsonify(ok=True)
+
+
+@app.post("/api/delete")
+def delete_lead():
+    sid = (request.get_json(force=True).get("seller_id") or "").strip()
+    if not sid:
+        return jsonify(error="Missing seller_id"), 400
+    mark_deleted(sid, "Deleted by hand")
+    return jsonify(ok=True)
+
+
+@app.post("/api/restore")
+def restore_lead():
+    sid = (request.get_json(force=True).get("seller_id") or "").strip()
+    update_json(DELETED, lambda d: d.pop(sid, None))
     return jsonify(ok=True)
 
 
@@ -205,7 +316,8 @@ def download():
         rows = [r for r in rows if r.get("phones")]
     new_only = request.args.get("new") == "1"
     if new_only:  # only leads not downloaded before; they're cleared from the table afterwards
-        rows = [r for r in rows if r.get("shared", {}).get("state") == "new" and not r["cleared"]]
+        rows = [r for r in rows if r.get("shared", {}).get("state") == "new"
+                and not r["cleared"] and not r["deleted"]]
     out = HERE / "leads-export.csv"
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=scraper.CSV_FIELDS, extrasaction="ignore")
@@ -273,5 +385,13 @@ if __name__ == "__main__":
     print(f"Amazon Store Scanner is running at {url}\nKeep this window open. Close it to quit.")
     if not os.environ.pop("SCANNER_NO_BROWSER", None):
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
+    def auto_recheck():
+        try:
+            if not scan.running and leads_to_recheck(everything=False):
+                scan.start_recheck(everything=False)
+        except Exception as e:
+            print(f"Couldn't start the automatic re-check: {e}")
+    threading.Timer(4.0, auto_recheck).start()  # after an update: apply new rules to waiting leads
     # make_server (unlike app.run) keeps the listening socket out of a restarted process
     make_server("127.0.0.1", port, app, threaded=True).serve_forever()

@@ -82,6 +82,7 @@
   .tag-new { background: var(--accent-soft); color: var(--accent); }
   .tag-known { background: var(--bg); color: var(--muted); }
   .tag-bad { color: var(--bad); }
+  .del { color: var(--bad); }
   .copy { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; }
   .none { color: var(--muted); }
   .small { color: var(--muted); font-size: 12px; }
@@ -152,7 +153,7 @@
       <div class="bar"><div id="bar"></div></div>
       <div class="stats">
         <div class="stat"><b id="s-checked">0</b><span>stores checked / found so far</span></div>
-        <div class="stat good"><b id="s-phones">0</b><span>new leads (saved to shared list)</span></div>
+        <div class="stat good"><b id="s-phones">0</b><span>new leads</span></div>
       </div>
       <p class="hint" id="captcha-tip">Chrome works minimized in your Dock. If Amazon asks you to type letters, the window pops up: do it there and the scan keeps going by itself.</p>
       <details><summary>Show details</summary><pre class="log" id="log">Nothing yet.</pre></details>
@@ -167,7 +168,9 @@
       <label class="check"><input type="checkbox" id="only-phones" checked> Only with phone</label>
       <label class="check"><input type="checkbox" id="only-new"> Only new leads</label>
       <label class="check"><input type="checkbox" id="show-cleared"> Show cleared</label>
+      <label class="check"><input type="checkbox" id="show-deleted"> Show deleted</label>
       <button class="ghost" id="spot-btn">Spot check 10</button>
+      <button class="ghost" id="recheck-btn" title="Run the latest rules again on the leads waiting in the list">Re-check leads</button>
       <button class="primary" id="download-new">Download new leads</button>
       <a class="ghost" href="/api/download?phones=1">Download phones</a>
       <a class="ghost" href="/api/download">Download all</a>
@@ -192,6 +195,7 @@ let mode = "search", rows = [], lastDone = -1, polling = null;
 
 const PHASES = {
   idle: "Ready", finding: "Finding stores…", checking: "Going through products and checking their stores…",
+  rechecking: "Re-checking waiting leads with the latest rules…",
   stopping: "Stopping…", done: "Finished", stopped: "Stopped", error: "Something went wrong (see details)",
 };
 
@@ -219,11 +223,20 @@ $("filter").oninput = render;
 $("only-phones").onchange = render;
 $("only-new").onchange = render;
 $("show-cleared").onchange = render;
+$("show-deleted").onchange = render;
+// A lead waiting for you: new, not downloaded yet, not deleted.
+const waiting = r => r.shared?.state === "new" && !r.cleared && !r.deleted;
+$("recheck-btn").onclick = async () => {
+  const res = await fetch("/api/recheck", {method: "POST"});
+  if (!res.ok) { $("count").textContent = "· " + ((await res.json()).error || "Couldn't start the re-check"); return; }
+  lastDone = -1;
+  startPolling();
+};
 
 // Spot check: a random sample of the new leads waiting to be downloaded, to verify by hand.
 let spot = null;
 function pickSpot() {
-  let pool = rows.filter(r => r.shared?.state === "new" && !r.cleared), kind = "new leads";
+  let pool = rows.filter(waiting), kind = "new leads";
   if (!pool.length) { pool = rows.filter(r => r.phones); kind = "stores with a phone"; }
   if (!pool.length) { $("count").textContent = "· Nothing to spot check yet: run a scan first"; return; }
   const sample = [...pool].sort(() => Math.random() - 0.5).slice(0, 10);
@@ -240,7 +253,7 @@ $("pages").onchange = () => $("pages-hint").textContent = $("pages").value === "
   ? "All pages: keeps going until Amazon runs out of results (usually ~7 pages). Can take a few hours; Stop anytime and everything found is kept."
   : "1 page ≈ 50 products ≈ 50–150 stores ≈ 20–30 minutes.";
 $("download-new").onclick = () => {
-  if (!rows.some(r => r.shared?.state === "new" && !r.cleared)) {
+  if (!rows.some(waiting)) {
     $("count").textContent = "· No new leads to download yet";
     return;
   }
@@ -257,7 +270,7 @@ async function refreshStatus() {
   const s = await (await fetch("/api/status")).json();
   $("phase").textContent = PHASES[s.phase] || s.phase;
   $("dot").classList.toggle("live", s.running);
-  $("start").disabled = s.running;
+  $("start").disabled = $("recheck-btn").disabled = s.running;
   $("stop").hidden = !s.running;
   $("s-checked").textContent = s.total ? `${s.done} / ${s.total}` : s.done;
   $("s-phones").textContent = s.phones;
@@ -290,17 +303,18 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 function render() {
   const q = $("filter").value.trim().toLowerCase();
   const onlyPhones = $("only-phones").checked, onlyNew = $("only-new").checked;
-  const showCleared = $("show-cleared").checked;
+  const showCleared = $("show-cleared").checked, showDeleted = $("show-deleted").checked;
   const shown = spot ? rows.filter(r => spot.has(r.seller_id)) : rows.filter(r => (showCleared || !r.cleared) &&
+    (showDeleted || !r.deleted) &&
     (!onlyPhones || r.phones) && (!onlyNew || r.shared?.state === "new") &&
     (!q || [r.seller_name, r.business_name, r.phones, r.emails, r.business_address].join(" ").toLowerCase().includes(q)));
   const withPhone = rows.filter(r => r.phones).length;
   const had = rows.filter(r => r.shared?.state === "had").length;
-  const fresh = rows.filter(r => r.shared?.state === "new" && !r.cleared).length;
-  const cleared = rows.filter(r => r.cleared).length;
+  const fresh = rows.filter(waiting).length;
+  const cleared = rows.filter(r => r.cleared).length, deleted = rows.filter(r => r.deleted).length;
   $("count").textContent = `· ${rows.length} checked · ${withPhone} with phone` +
     (rows.some(r => r.shared) ? ` · ${had} already in shared list · ${fresh} new to download` : "") +
-    (cleared ? ` · ${cleared} cleared` : "");
+    (cleared ? ` · ${cleared} cleared` : "") + (deleted ? ` · ${deleted} deleted` : "");
   $("download-new").textContent = fresh ? `Download ${fresh} new lead${fresh === 1 ? "" : "s"}` : "Download new leads";
   if (!shown.length) {
     $("rows").innerHTML = `<tr><td colspan="7" class="empty">${rows.length
@@ -318,7 +332,11 @@ function render() {
     const live = r.shared && SHARED_TAGS[r.shared.state];
     const t = live ? [live[0].replace("{source}", r.shared.source || ""), live[1]] : TAGS[r.status];
     const tag = (t ? `<br><span class="tag ${t[1]}">${esc(t[0])}</span>` : "") +
-      (r.cleared ? `<br><span class="tag tag-known">Downloaded ${esc(r.cleared)}</span>` : "");
+      (r.cleared ? `<br><span class="tag tag-known">Downloaded ${esc(r.cleared)}</span>` : "") +
+      (r.deleted ? `<br><span class="tag tag-bad">${esc(r.deleted)} · ${esc(r.deleted_when)}</span>` : "");
+    const action = r.deleted
+      ? `<br><button class="copy" data-restore="${esc(r.seller_id)}">Undo delete</button>`
+      : r.shared?.state === "new" ? `<br><button class="copy del" data-delete="${esc(r.seller_id)}">Delete</button>` : "";
     const emails = r.emails ? r.emails.split(" | ").map(e => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join("<br>") : "";
     const rating = r.positive_pct ? `${esc(r.positive_pct)}%<br><span class="small">${esc(r.rating_count)} ratings</span>` : "";
     const when = r.scraped_at ? new Date(r.scraped_at).toLocaleDateString() : "";
@@ -326,12 +344,18 @@ function render() {
       <td><a href="${esc(r.profile_url)}" target="_blank" rel="noopener">${esc(r.seller_name || r.seller_id)}</a>
           <br><span class="small"><a href="${esc(r.profile_url)}" target="_blank" rel="noopener">Seller page</a>
           · <a href="${esc(r.storefront_url)}" target="_blank" rel="noopener">Storefront</a></span></td>
-      <td>${phones}${tag}</td><td>${emails}</td><td>${esc(r.business_name)}</td>
+      <td>${phones}${tag}${action}</td><td>${emails}</td><td>${esc(r.business_name)}</td>
       <td class="small">${esc(r.business_address)}</td><td>${rating}</td><td class="small">${when}</td></tr>`;
   }).join("");
 }
 
-$("rows").onclick = e => {
+$("rows").onclick = async e => {
+  const del = e.target.closest("[data-delete]"), undo = e.target.closest("[data-restore]");
+  if (del || undo) {
+    await fetch(del ? "/api/delete" : "/api/restore", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({seller_id: (del || undo).dataset.delete || (del || undo).dataset.restore})});
+    return loadResults();
+  }
   const b = e.target.closest("[data-copy]");
   if (!b) return;
   navigator.clipboard.writeText(b.dataset.copy);
