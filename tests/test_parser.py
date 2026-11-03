@@ -107,3 +107,31 @@ def test_departments_and_media_only():
     assert parse_departments("<div>no menu</div>") == []
     assert not is_media_only([])                                 # couldn't tell: never banned
     assert is_media_only(["Books", "CDs & Vinyl"])               # music counts as media too
+
+
+def test_brand_reading_and_name_matching():
+    from seller_parser import parse_brands, parse_product_brand, same_name
+    assert parse_product_brand('<a id="bylineInfo" href="#">Visit the bareMinerals Store</a>') == "bareMinerals"
+    assert parse_product_brand('<a id="bylineInfo" href="#">Brand: bareMinerals</a>') == "bareMinerals"
+    assert parse_product_brand("<div>no byline</div>") == ""
+    html = ('<div id="brandsRefinements"><ul><li><span>bareMinerals</span></li><li><span>Clinique</span></li>'
+            '<li><span>See more</span></li></ul></div>')
+    assert parse_brands(html) == ["bareMinerals", "Clinique"]
+    assert same_name("bareMinerals", "bareMinerals")
+    assert same_name("BAREMINERALS Official Store", "bareMinerals")
+    assert same_name("Bare Minerals Inc", "bareMinerals")
+    assert not same_name("Beauty Deals Depot", "bareMinerals")
+    assert not same_name("Bare Minerals Outlet", "bareMinerals")   # a differently named reseller stays a lead
+    assert not same_name("", "") and not same_name("The Store", "Store")
+
+
+def test_own_brand_rule():
+    import rules
+    seller = {"seller_name": "bareMinerals", "business_name": "Bare Escentuals Beauty, Inc."}
+    assert rules.violation(seller | {"found_brand": "bareMinerals"}, None) == "Sells its own brand (bareMinerals)"
+    assert rules.violation(seller, ["Beauty & Personal Care"], ["bareMinerals"]) == "Sells its own brand (bareMinerals)"
+    reseller = {"seller_name": "Glow Beauty Deals", "business_name": "Glow LLC", "found_brand": "bareMinerals"}
+    assert rules.violation(reseller, ["Beauty & Personal Care"], ["bareMinerals", "Clinique"]) is None
+    # matched on the legal business name too
+    assert rules.violation({"seller_name": "Shop 77", "business_name": "Lumi Toys LLC"}, None, ["Lumi Toys"]) \
+        == "Sells its own brand (Lumi Toys)"

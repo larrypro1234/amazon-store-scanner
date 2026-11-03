@@ -101,18 +101,18 @@ class Scan:
                 sid = r["seller_id"]
                 self.log(f"Lead {i}/{len(waiting)} {r.get('seller_name') or sid}")
                 try:
-                    departments = checker.departments(sid)
+                    departments, brands = checker.storefront(sid)
                 except scraper.Stopped:
                     raise
                 except Exception as e:  # one bad page shouldn't end the re-check
                     self.log(f"  ! Couldn't read this store ({e}); it'll be re-checked next time.")
-                    departments = None
-                reason = rules.violation(r, departments)
+                    departments = brands = None
+                reason = rules.violation(r, departments, brands)
                 if reason:
                     mark_deleted(sid, f"Removed by re-check: {reason}")
                     removed += 1
                     self.log(f"  REMOVED: {reason}")
-                elif departments is not None:  # couldn't read the store: try again next time
+                elif departments is not None or brands is not None:  # unreadable store: try next time
                     update_json(RULES_CHECKED, lambda d: d.__setitem__(sid, rules.RULES_VERSION))
                 self._progress(i, len(waiting), removed)
             self.log(f"Re-check done: {removed} of {len(waiting)} leads removed.")
@@ -149,9 +149,10 @@ class Scan:
                 # One results page at a time: check its products' stores before loading the next page,
                 # so numbers show up as the scan goes.
                 for page_asins in scraper.iter_search_pages(b, query, pages):
-                    for _, _, asin, title, new_sellers in scraper.iter_product_sellers(b, page_asins, seen):
+                    for _, _, asin, title, brand, new_sellers in scraper.iter_product_sellers(b, page_asins, seen):
                         checker.check(new_sellers, found_from=f'"{query}" search: {title}',
-                                      found_from_url=f"https://{domain}/dp/{asin}", keywords=query)
+                                      found_from_url=f"https://{domain}/dp/{asin}", keywords=query,
+                                      found_brand=brand)
                         if checker.reached:
                             break
                     if checker.reached:

@@ -137,7 +137,7 @@ def test_lookup_is_read_only_and_handles_many_numbers(db_file):
 def test_media_only_seller_is_rejected_in_shared_list(db_file):
     walmart_rows(db_file)
     before = dump(db_file)
-    status = shared_db.record_seller(row("+1 512-555-0100"), get_departments=lambda: ["Books", "Movies & TV"])
+    status = shared_db.record_seller(row("+1 512-555-0100"), get_store=lambda: (["Books", "Movies & TV"], None))
     assert status == "rejected"
     con = sqlite3.connect(db_file)
     phone, details, source, _ = con.execute("SELECT * FROM numbers WHERE phone='5125550100'").fetchone()
@@ -155,9 +155,9 @@ def test_media_only_seller_is_rejected_in_shared_list(db_file):
 
 def test_seller_with_other_departments_is_a_lead_with_store_mix(db_file):
     r = row("+1 512-555-0100")
-    assert shared_db.record_seller(r, get_departments=lambda: ["Books", "Toys & Games"]) == "new_lead"
+    assert shared_db.record_seller(r, get_store=lambda: (["Books", "Toys & Games"], None)) == "new_lead"
     assert r["store_mix"] == "Books · Toys & Games"
 
 
 def test_unreadable_storefront_is_not_rejected(db_file):
-    assert shared_db.record_seller(row("+1 512-555-0100"), get_departments=lambda: None) == "new_lead"
+    assert shared_db.record_seller(row("+1 512-555-0100"), get_store=lambda: (None, None)) == "new_lead"

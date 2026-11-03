@@ -35,6 +35,9 @@ the store is checked:
   Department menu shows only books, movies, music and video games (Books, Kindle Store, Audible, Movies &
   TV, Prime Video, CDs & Vinyl, Digital Music, Video Games), its number is added as
   `Rejected by Amazon app` with the reason, so both apps skip it.
+  Also banned: stores that **sell their own brand** (the brand owner, e.g. the bareMinerals store selling
+  bareMinerals). The seller's name or business name is compared with the brand of the product it was found
+  on and with the brands in its storefront's Brands menu, ignoring words like "Official", "Store", "Inc".
 - **Already have this number** / **No US phone** / **no phone**: nothing is written.
 
 Amazon leads are not added to the shared Leads inbox. The app never deletes or changes rows in the

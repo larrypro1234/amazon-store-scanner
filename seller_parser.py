@@ -111,6 +111,39 @@ def parse_departments(html: str) -> list[str]:
     return selected[:1] if selected else [t for t, _ in items]
 
 
+def parse_brands(html: str) -> list[str]:
+    """Brands listed in the left "Brands" menu of a store's storefront page."""
+    soup = BeautifulSoup(html, "html.parser")
+    items = soup.select("#brandsRefinements li") or soup.select("li[id^='p_89/'], li[id^='p_123/']")
+    brands = []
+    for li in items:
+        text = " ".join(li.get_text(" ").split())
+        if text and not text.lower().startswith(("see more", "see less", "any brand")) and text not in brands:
+            brands.append(text)
+    return brands
+
+
+def parse_product_brand(html: str) -> str:
+    """The brand on a product page ("Visit the bareMinerals Store" / "Brand: bareMinerals")."""
+    byline = BeautifulSoup(html, "html.parser").select_one("#bylineInfo")
+    text = " ".join(byline.get_text(" ").split()) if byline else ""
+    m = re.search(r"Visit the (.+?) Store", text) or re.search(r"Brand:\s*(.+)", text)
+    return m.group(1).strip() if m else ""
+
+
+NAME_FILLER = {"official", "store", "shop", "the", "inc", "llc", "ltd", "co", "corp", "company", "brand",
+               "brands", "us", "usa", "direct", "online", "amazon", "by"}
+
+
+def same_name(a: str, b: str) -> bool:
+    """Whether a seller name and a brand are the same name ("BAREMINERALS Official Store" = "bareMinerals")."""
+    def key(s):
+        words = re.sub(r"[^a-z0-9]+", " ", (s or "").lower().replace("&", " and ")).split()
+        return "".join(w for w in words if w not in NAME_FILLER)
+    ka, kb = key(a), key(b)
+    return len(ka) >= 3 and ka == kb
+
+
 def is_media_only(departments: list[str]) -> bool:
     return bool(departments) and all(d.lower() in MEDIA_DEPARTMENTS for d in departments)
 

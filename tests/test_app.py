@@ -47,8 +47,9 @@ def test_recheck_applies_new_rules_to_waiting_leads(env, monkeypatch):
         def __init__(self, *a, **k): pass
         def close(self): pass
     monkeypatch.setattr(scraper, "Browser", FakeBrowser)
-    stores = {"A1BOOKS": ["Books", "Movies & TV"], "A2TOYS": ["Toys & Games"], "A3OLD": None}
-    monkeypatch.setattr(scraper.SellerChecker, "departments", lambda self, sid: stores[sid])
+    stores = {"A1BOOKS": (["Books", "Movies & TV"], None), "A2TOYS": (["Toys & Games"], ["Lego", "Mattel"]),
+              "A3OLD": (None, None)}
+    monkeypatch.setattr(scraper.SellerChecker, "storefront", lambda self, sid: stores[sid])
     # A3OLD was downloaded already: not waiting, so not re-checked
     app.mark_cleared(["A3OLD"])
 

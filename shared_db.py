@@ -103,13 +103,13 @@ def details_for(row: dict) -> str:
     return " · ".join(p for p in parts if p)
 
 
-def record_seller(row: dict, get_departments=None) -> str:
+def record_seller(row: dict, get_store=None) -> str:
     """Decide what a freshly scraped seller is, saving its number to the shared list when it's new.
 
     Returns "new_lead", "rejected" (breaks a rule in rules.py), "known" (already have this number),
     "no_us_phone", or "no_phone". The check against `numbers` happens right now, not from a cached
-    copy. `get_departments` (called only for would-be new leads) returns the store's departments,
-    or None when the storefront couldn't be read.
+    copy. `get_store` (called only for would-be new leads) returns the storefront's
+    (departments, brands), each None when they couldn't be read.
     """
     raw = [p for p in (row.get("phones") or "").split(" | ") if p]
     if not raw:
@@ -119,11 +119,11 @@ def record_seller(row: dict, get_departments=None) -> str:
         return "no_us_phone"
     if any(is_known(n) for n in us):
         return "known"
-    departments = get_departments() if get_departments else None
+    departments, brands = get_store() if get_store else (None, None)
     if departments:
         row["store_mix"] = " · ".join(departments)
     details = details_for(row)
-    reason = rules.violation(row, departments)
+    reason = rules.violation(row, departments, brands)
     if reason:
         # A real reason about the seller: saved as rejected so both apps skip it from now on.
         for n in us:
