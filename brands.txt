@@ -1,0 +1,932 @@
+# Well-known brands. A store counts as a lead only if it sells at least one of these
+# (or one from "my-brands.txt", which you can edit in the app). One brand per line.
+# A brand here also matches longer names that start with it: "L'Oreal" matches "L'Oreal Paris".
+
+# Toys & games
+LEGO
+Mattel
+Barbie
+Hot Wheels
+Fisher-Price
+Hasbro
+Nerf
+Play-Doh
+Monopoly
+Transformers
+My Little Pony
+Spin Master
+Paw Patrol
+Hatchimals
+Melissa & Doug
+VTech
+LeapFrog
+Little Tikes
+Step2
+MGA Entertainment
+L.O.L. Surprise
+Bratz
+Funko
+Pokemon
+Crayola
+Ravensburger
+Jakks Pacific
+Bandai
+Hot Toys
+Schleich
+Playmobil
+Magna-Tiles
+Squishmallows
+Jazwares
+Zuru
+Bunch O Balloons
+Mega Bloks
+Ty
+Beanie Boos
+Disney
+Marvel
+Star Wars
+Nintendo
+PlayStation
+Xbox
+Razor
+Radio Flyer
+Intex
+Bestway
+Little Live Pets
+Moose Toys
+Shopkins
+Cocomelon
+Bluey
+Peppa Pig
+Thomas & Friends
+Uno
+Jenga
+Twister
+Connect 4
+Battleship
+Scrabble
+Cards Against Humanity
+Exploding Kittens
+Rubik's
+Slinky
+K'NEX
+Lincoln Logs
+Tonka
+Matchbox
+Polly Pocket
+American Girl
+Cabbage Patch Kids
+Webkinz
+Gund
+Steiff
+Jellycat
+Build-A-Bear
+Wilton
+Bachmann
+Lionel
+Traxxas
+Hobbico
+Estes
+
+# Beauty & personal care
+L'Oreal
+Maybelline
+Revlon
+CoverGirl
+NYX
+e.l.f.
+Neutrogena
+Olay
+Cetaphil
+CeraVe
+La Roche-Posay
+Aveeno
+Dove
+Nivea
+Vaseline
+Jergens
+Eucerin
+Aquaphor
+Clinique
+Estee Lauder
+Lancome
+MAC
+Bobbi Brown
+Smashbox
+Too Faced
+Urban Decay
+Benefit
+Tarte
+NARS
+Fenty Beauty
+Huda Beauty
+Anastasia Beverly Hills
+Morphe
+ColourPop
+Milani
+Physicians Formula
+Wet n Wild
+Rimmel
+Bourjois
+Max Factor
+bareMinerals
+IT Cosmetics
+Laura Mercier
+Dior
+Chanel
+Yves Saint Laurent
+Giorgio Armani
+Gucci
+Prada
+Versace
+Dolce & Gabbana
+Calvin Klein
+Ralph Lauren
+Tommy Hilfiger
+Hugo Boss
+Burberry
+Marc Jacobs
+Michael Kors
+Coach
+Kate Spade
+Viktor & Rolf
+Paco Rabanne
+Carolina Herrera
+Jo Malone
+Tom Ford
+Creed
+Davidoff
+Montblanc
+Bath & Body Works
+Victoria's Secret
+The Ordinary
+Paula's Choice
+Drunk Elephant
+Tatcha
+Kiehl's
+Origins
+Clarins
+Shiseido
+SK-II
+Sunday Riley
+First Aid Beauty
+Mario Badescu
+Burt's Bees
+Aveda
+Bumble and bumble
+Redken
+Paul Mitchell
+Matrix
+Kerastase
+Moroccanoil
+Olaplex
+Living Proof
+OGX
+Pantene
+Head & Shoulders
+Herbal Essences
+Garnier
+TRESemme
+Suave
+Aussie
+Dove Men
+SheaMoisture
+Cantu
+Mielle
+Carol's Daughter
+John Frieda
+Batiste
+Not Your Mother's
+Conair
+Revlon One-Step
+Dyson
+BaBylissPRO
+CHI
+Remington
+T3
+Hot Tools
+Gillette
+Venus
+Schick
+Braun
+Philips Norelco
+Oral-B
+Crest
+Colgate
+Sensodyne
+Listerine
+Waterpik
+Old Spice
+Axe
+Degree
+Secret
+Speed Stick
+Native
+Dr. Teal's
+St. Ives
+Bioré
+Clean & Clear
+Proactiv
+Differin
+Banana Boat
+Coppertone
+Hawaiian Tropic
+Sun Bum
+Supergoop
+EltaMD
+Essie
+OPI
+Sally Hansen
+Kiss
+Ardell
+Real Techniques
+Beautyblender
+Mane 'n Tail
+Bed Head
+Amika
+
+# Health, household & over-the-counter
+Tylenol
+Advil
+Motrin
+Aleve
+Bayer
+Excedrin
+Benadryl
+Claritin
+Zyrtec
+Allegra
+Flonase
+Mucinex
+Vicks
+NyQuil
+DayQuil
+Robitussin
+Theraflu
+Halls
+Pepto-Bismol
+Tums
+Rolaids
+Imodium
+Dulcolax
+Miralax
+Metamucil
+Prilosec
+Nexium
+Pepcid
+Zantac
+Band-Aid
+Neosporin
+Cortizone
+Hydrocortisone
+Polysporin
+Nature Made
+Nature's Bounty
+Centrum
+One A Day
+Vitafusion
+Olly
+Garden of Life
+NOW Foods
+Optimum Nutrition
+Muscletech
+Premier Protein
+Orgain
+Ensure
+Boost
+Pedialyte
+Emergen-C
+Airborne
+Zicam
+Cold-EEZE
+Abreva
+Carmex
+ChapStick
+Blistex
+Visine
+Bausch + Lomb
+Systane
+Renu
+Opti-Free
+Dr. Scholl's
+Gold Bond
+Lysol
+Clorox
+Tide
+Gain
+Downy
+Bounce
+Persil
+Arm & Hammer
+OxiClean
+Shout
+Cascade
+Finish
+Dawn
+Palmolive
+Ajax
+Comet
+Mr. Clean
+Swiffer
+Febreze
+Glade
+Air Wick
+Scrubbing Bubbles
+Windex
+Pledge
+Bounty
+Charmin
+Cottonelle
+Scott
+Kleenex
+Puffs
+Angel Soft
+Quilted Northern
+Brawny
+Viva
+Ziploc
+Glad
+Hefty
+Reynolds
+Saran
+Rubbermaid
+OXO
+Tupperware
+Pyrex
+Energizer
+Duracell
+Rayovac
+Raid
+Off!
+Cutter
+Ortho
+Scotts
+Miracle-Gro
+Roundup
+Kingsford
+Weber
+Coleman
+Igloo
+Yeti
+Stanley
+Hydro Flask
+Contigo
+Thermos
+Brita
+PUR
+ZeroWater
+
+# Baby
+Pampers
+Huggies
+Luvs
+Honest
+Seventh Generation
+Johnson's
+Aveeno Baby
+Desitin
+Boudreaux's
+A+D
+Similac
+Enfamil
+Gerber
+Earth's Best
+Happy Baby
+Plum Organics
+Graco
+Chicco
+Evenflo
+Britax
+Baby Trend
+Summer Infant
+Munchkin
+Dr. Brown's
+Philips Avent
+Tommee Tippee
+NUK
+MAM
+Medela
+Lansinoh
+Boppy
+Halo
+Skip Hop
+Fisher Price Baby
+Baby Einstein
+Infantino
+Nuby
+Boon
+Ergobaby
+Baby K'tan
+Owlet
+Hatch
+Ubbi
+Diaper Genie
+
+# Grocery, snacks & drinks
+Coca-Cola
+Pepsi
+Dr Pepper
+Sprite
+Mountain Dew
+Gatorade
+Powerade
+Red Bull
+Monster
+Celsius
+Bang
+5-hour Energy
+LaCroix
+Bubly
+Starbucks
+Folgers
+Maxwell House
+Dunkin'
+Keurig
+Green Mountain
+Peet's
+Lavazza
+Nespresso
+Lipton
+Twinings
+Bigelow
+Celestial Seasonings
+Nestle
+Hershey's
+Reese's
+Kit Kat
+M&M's
+Snickers
+Twix
+Mars
+Skittles
+Starburst
+Lindt
+Ghirardelli
+Ferrero
+Nutella
+Haribo
+Jolly Rancher
+Sour Patch Kids
+Swedish Fish
+Trolli
+Airheads
+Life Savers
+Tootsie
+Werther's
+Ricola
+Orbit
+Extra
+Trident
+Doritos
+Lay's
+Cheetos
+Pringles
+Ruffles
+Fritos
+Tostitos
+Sun Chips
+Goldfish
+Cheez-It
+Ritz
+Oreo
+Chips Ahoy!
+Nabisco
+Keebler
+Pepperidge Farm
+Kellogg's
+General Mills
+Cheerios
+Post
+Quaker
+Kind
+Clif
+Nature Valley
+RXBAR
+Quest
+Larabar
+Belvita
+Planters
+Blue Diamond
+Wonderful
+Kraft
+Heinz
+Hellmann's
+French's
+Campbell's
+Progresso
+Barilla
+Ragu
+Prego
+McCormick
+Lawry's
+Hidden Valley
+Jif
+Skippy
+Smucker's
+Welch's
+Ocean Spray
+Tropicana
+Minute Maid
+Capri Sun
+Kool-Aid
+Crystal Light
+MiO
+Swiss Miss
+Jell-O
+Betty Crocker
+Pillsbury
+Duncan Hines
+King Arthur
+Bob's Red Mill
+Annie's
+Kraft Mac & Cheese
+Uncle Ben's
+Ben's Original
+Old El Paso
+Goya
+Spam
+Hormel
+Chobani
+Fairlife
+Horizon Organic
+Silk
+Almond Breeze
+Oatly
+
+# Pet supplies
+Purina
+Pro Plan
+Fancy Feast
+Friskies
+Blue Buffalo
+Hill's
+Science Diet
+Royal Canin
+Iams
+Pedigree
+Rachael Ray Nutrish
+Nutro
+Wellness
+Taste of the Wild
+Merrick
+Orijen
+Acana
+Greenies
+Milk-Bone
+Temptations
+Meow Mix
+9Lives
+Tidy Cats
+Fresh Step
+Arm & Hammer Litter
+Dr. Elsey's
+Frontline
+Advantage
+K9 Advantix
+Seresto
+NexGard
+Bravecto
+Kong
+Nylabone
+Chuckit!
+Petmate
+PetSafe
+Furminator
+Hartz
+Zesty Paws
+Nature's Miracle
+Tetra
+API
+Kaytee
+
+# Home, kitchen & appliances
+KitchenAid
+Cuisinart
+Hamilton Beach
+Black+Decker
+Ninja
+Shark
+Instant Pot
+Crock-Pot
+Calphalon
+T-fal
+Le Creuset
+Lodge
+All-Clad
+Rachael Ray
+Farberware
+Mr. Coffee
+Breville
+Vitamix
+NutriBullet
+Oster
+Sunbeam
+Presto
+Dash
+Chefman
+Bissell
+Hoover
+Eureka
+iRobot
+Roomba
+Honeywell
+Holmes
+Vornado
+Lasko
+Frigidaire
+GE
+Whirlpool
+Samsung
+LG
+Panasonic
+Sharp
+Toshiba
+Keurig Dr Pepper
+Yankee Candle
+Bath & Body Works Candles
+Mainstays
+Better Homes & Gardens
+Martha Stewart
+Serta
+Sealy
+Tempur-Pedic
+Casper
+Purple
+Simmons
+Ninja Foodi
+Corelle
+CorningWare
+Libbey
+Mikasa
+Lenox
+Waterford
+Zwilling
+Henckels
+Wusthof
+Cutco
+Victorinox
+Joseph Joseph
+Simplehuman
+Umbra
+mDesign
+Command
+3M
+Scotch
+Gorilla
+Loctite
+Elmer's
+WD-40
+Rust-Oleum
+Krylon
+Behr
+Glidden
+Sherwin-Williams
+
+# Electronics & accessories
+Apple
+Beats
+Bose
+Sony
+JBL
+Skullcandy
+Sennheiser
+Audio-Technica
+Anker
+Belkin
+Logitech
+Razer
+Corsair
+SteelSeries
+HyperX
+Turtle Beach
+Microsoft
+Google
+Nest
+Ring
+Arlo
+Blink
+Wyze
+Roku
+Fire TV
+Kindle
+Echo
+Garmin
+Fitbit
+GoPro
+DJI
+Canon
+Nikon
+Fujifilm
+Kodak
+Polaroid
+Epson
+HP
+Brother
+Lexmark
+Dell
+Lenovo
+Asus
+Acer
+SanDisk
+Samsung Electronics
+Western Digital
+Seagate
+Kingston
+Crucial
+Lexar
+PNY
+Netgear
+TP-Link
+Linksys
+Eero
+Motorola
+Nokia
+OtterBox
+Spigen
+LifeProof
+ZAGG
+Mophie
+PopSockets
+Tile
+AirTag
+Philips Hue
+Energizer Hard Case
+Vizio
+TCL
+Hisense
+Insignia
+Onn
+
+# Sports, outdoors & fitness
+Nike
+Adidas
+Under Armour
+Puma
+Reebok
+New Balance
+Asics
+Brooks
+Saucony
+Hoka
+Skechers
+Converse
+Vans
+Fila
+Champion
+The North Face
+Patagonia
+Columbia
+Carhartt
+Wilson
+Spalding
+Rawlings
+Easton
+Louisville Slugger
+Callaway
+TaylorMade
+Titleist
+Ping
+Bowflex
+NordicTrack
+Peloton
+Gaiam
+Manduka
+Lululemon
+Fitbit Sports
+Shimano
+Schwinn
+Huffy
+Bell
+Thule
+CamelBak
+Osprey
+Ozark Trail
+Marmot
+Merrell
+Keen
+Teva
+Crocs
+Oakley
+Ray-Ban
+Speedo
+TYR
+Franklin Sports
+Rawlings Sports
+Mizuno
+Jordan
+Dr. Martens
+
+# Clothing, shoes & accessories
+Levi's
+Wrangler
+Lee
+Hanes
+Fruit of the Loom
+Gildan
+Jockey
+Calvin Klein Underwear
+Carter's
+OshKosh B'gosh
+Gerber Childrenswear
+Gap
+Old Navy
+Guess
+Fossil
+Timex
+Casio
+Seiko
+Citizen
+Invicta
+Bulova
+Swatch
+Pandora
+Swarovski
+Alex and Ani
+Vera Bradley
+JanSport
+Herschel
+Samsonite
+American Tourister
+Travelpro
+Tumi
+Ugg
+Timberland
+Clarks
+Sperry
+Steve Madden
+Sam Edelman
+Birkenstock
+Hey Dude
+Toms
+Columbia Sportswear
+Tommy Bahama
+Nautica
+Polo Ralph Lauren
+Lacoste
+Superdry
+
+# Tools, automotive & industrial
+DeWalt
+Milwaukee
+Makita
+Bosch
+Ryobi
+Craftsman
+Stanley Tools
+Porter-Cable
+Kobalt
+Husky
+Ridgid
+Klein Tools
+Fluke
+Irwin
+Channellock
+Snap-on
+Mobil 1
+Castrol
+Pennzoil
+Valvoline
+Armor All
+Meguiar's
+Chemical Guys
+Turtle Wax
+Rain-X
+Bosch Automotive
+Michelin
+Goodyear
+Bridgestone
+Duralast
+Fram
+K&N
+STP
+Lucas Oil
+Prestone
+NOCO
+Schumacher
+
+# Office & school
+Sharpie
+Expo
+Paper Mate
+Pilot
+BIC
+Pentel
+Zebra
+Uni-ball
+Post-it
+Avery
+Five Star
+Mead
+Moleskine
+Staples
+Swingline
+Texas Instruments
+Casio Calculators
+Fellowes
+Elmer's Glue
+Ticonderoga
+Prismacolor
+Faber-Castell
+Winsor & Newton
+Cricut
+Silhouette

@@ -15,7 +15,8 @@ REPO = "larrypro1234/amazon-store-scanner"
 BRANCH = "main"
 HERE = Path(__file__).parent
 # Never overwritten by an update: your results, browser login, and installed packages.
-KEEP = {".venv", ".browser-profile", "leads.csv", "leads-export.csv", "debug", "scanner.log", ".git"}
+KEEP = {".venv", ".browser-profile", "leads.csv", "leads-export.csv", "debug", "scanner.log", ".git",
+        "my-brands.txt", "cleared.json", "deleted.json", "rules-checked.json", ".shared-db-imported"}
 
 
 def _ssl_context() -> ssl.SSLContext:

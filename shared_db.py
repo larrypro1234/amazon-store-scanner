@@ -106,7 +106,8 @@ def details_for(row: dict) -> str:
 def record_seller(row: dict, get_store=None) -> str:
     """Decide what a freshly scraped seller is, saving its number to the shared list when it's new.
 
-    Returns "new_lead", "rejected" (breaks a rule in rules.py), "known" (already have this number),
+    Returns "new_lead", "rejected" (breaks a rule in rules.py: banned in both apps), "skipped" (no
+    well-known brands: not a lead, but nothing is written), "known" (already have this number),
     "no_us_phone", or "no_phone". The check against `numbers` happens right now, not from a cached
     copy. `get_store` (called only for would-be new leads) returns the storefront's
     (departments, brands), each None when they couldn't be read.
@@ -130,6 +131,10 @@ def record_seller(row: dict, get_store=None) -> str:
             add_number(n, f"Rejected: {reason} · {details}", SOURCE_REJECTED)
         row["reason"] = reason
         return "rejected"
+    soft = rules.skip_reason(row, brands)
+    if soft:
+        row["reason"] = soft
+        return "skipped"
     for n in us:
         add_number(n, details)
     return "new_lead"

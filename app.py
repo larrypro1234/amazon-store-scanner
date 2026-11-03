@@ -20,6 +20,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from werkzeug.serving import make_server
 
+import brand_list
 import rules
 import scraper
 import shared_db
@@ -107,7 +108,7 @@ class Scan:
                 except Exception as e:  # one bad page shouldn't end the re-check
                     self.log(f"  ! Couldn't read this store ({e}); it'll be re-checked next time.")
                     departments = brands = None
-                reason = rules.violation(r, departments, brands)
+                reason = rules.violation(r, departments, brands) or rules.skip_reason(r, brands)
                 if reason:
                     mark_deleted(sid, f"Removed by re-check: {reason}")
                     removed += 1
@@ -292,6 +293,18 @@ def restore_lead():
     sid = (request.get_json(force=True).get("seller_id") or "").strip()
     update_json(DELETED, lambda d: d.pop(sid, None))
     return jsonify(ok=True)
+
+
+@app.get("/api/brands")
+def get_brands():
+    return jsonify(built_in=len(brand_list.read_list(brand_list.BUILT_IN)),
+                   mine="\n".join(brand_list.read_list(brand_list.MINE)))
+
+
+@app.post("/api/brands")
+def set_brands():
+    n = brand_list.save_mine(request.get_json(force=True).get("mine") or "")
+    return jsonify(ok=True, mine=n)
 
 
 @app.post("/api/stop")

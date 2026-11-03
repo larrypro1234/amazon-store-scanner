@@ -92,6 +92,9 @@
   .spot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--accent-soft);
           border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-weight: 600; }
   .spot span { flex: 1; }
+  details.brands { margin-top: 14px; }
+  details.brands summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  details.brands textarea { min-height: 110px; margin-top: 8px; }
   .err { color: var(--bad); font-size: 14px; margin-top: 10px; min-height: 1em; }
 </style>
 </head>
@@ -145,6 +148,15 @@
         <button class="ghost stop" id="stop" hidden>Stop</button>
       </div>
       <div class="err" id="err"></div>
+      <details class="brands">
+        <summary>Well-known brands <span class="small" id="brands-count"></span></summary>
+        <p class="hint">A store is only a lead if it sells at least one well-known brand. The app comes with
+          a list of about 900. Add any it's missing here, one per line.</p>
+        <textarea id="my-brands" placeholder="e.g.&#10;Squishmallows&#10;Stanley"></textarea>
+        <div class="btns"><button class="ghost" id="save-brands">Save my brands</button>
+          <span class="small" id="brands-saved"></span></div>
+        <p class="hint">After saving, click <b>Re-check leads</b> to apply the list to leads waiting in the list.</p>
+      </details>
     </div>
 
     <div class="card">
@@ -296,6 +308,7 @@ async function loadResults() {
 const TAGS = {
   new_lead: ["New lead", "tag-new"], rejected: ["Banned{reason}", "tag-bad"], known: ["Already have this number", "tag-known"],
   no_us_phone: ["No US phone", "tag-known"], db_error: ["Not checked against shared list", "tag-bad"],
+  skipped: ["Skipped{reason}", "tag-known"],
 };
 // Live status against the shared seller list, read each time the page loads.
 const SHARED_TAGS = {
@@ -334,7 +347,7 @@ function render() {
       `<span class="phone-pill"><a class="phone" href="tel:${esc(p.replace(/[^+\d]/g, ""))}">${esc(p)}</a>` +
       `<button class="copy" data-copy="${esc(p)}" title="Copy">Copy</button></span>`).join("")
       : `<span class="none">${r.status === "captcha" ? "blocked, scan again" : r.status === "not_found" ? "store not found" : "none"}</span>`;
-    const live = r.shared && SHARED_TAGS[r.shared.state];
+    const live = r.status !== "skipped" && r.shared && SHARED_TAGS[r.shared.state];
     let t = live ? [live[0].replace("{source}", r.shared.source || ""), live[1]] : TAGS[r.status];
     if (t) t = [t[0].replace("{reason}", r.reason ? `: ${r.reason}` : ""), t[1]];
     const tag = (t ? `<br><span class="tag ${t[1]}">${esc(t[0])}</span>` : "") +
@@ -342,7 +355,7 @@ function render() {
       (r.deleted ? `<br><span class="tag tag-bad">${esc(r.deleted)} · ${esc(r.deleted_when)}</span>` : "");
     const action = r.deleted
       ? `<br><button class="copy" data-restore="${esc(r.seller_id)}">Undo delete</button>`
-      : r.shared?.state === "new" ? `<br><button class="copy del" data-delete="${esc(r.seller_id)}">Delete</button>` : "";
+      : `<br><button class="copy del" data-delete="${esc(r.seller_id)}" title="Remove this seller from the list">Delete</button>`;
     const emails = r.emails ? r.emails.split(" | ").map(e => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join("<br>") : "";
     const rating = r.positive_pct ? `${esc(r.positive_pct)}%<br><span class="small">${esc(r.rating_count)} ratings</span>` : "";
     const when = r.scraped_at ? new Date(r.scraped_at).toLocaleDateString() : "";
@@ -405,6 +418,23 @@ $("update-btn").onclick = async () => {
   }
   $("version").textContent = "Restart took too long. Open Amazon Scanner again.";
 };
+
+async function loadBrands() {
+  try {
+    const b = await (await fetch("/api/brands")).json();
+    const mine = b.mine ? b.mine.split("\n").length : 0;
+    $("brands-count").textContent = `· ${b.built_in} built in${mine ? ` + ${mine} yours` : ""}`;
+    $("my-brands").value = b.mine;
+  } catch {}
+}
+$("save-brands").onclick = async () => {
+  const res = await fetch("/api/brands", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({mine: $("my-brands").value})});
+  $("brands-saved").textContent = res.ok ? "Saved" : "Couldn't save";
+  setTimeout(() => $("brands-saved").textContent = "", 2000);
+  loadBrands();
+};
+loadBrands();
 
 checkVersion();
 setInterval(checkVersion, 30 * 60 * 1000);

@@ -38,6 +38,10 @@ the store is checked:
   Also banned: stores that **sell their own brand** (the brand owner, e.g. the bareMinerals store selling
   bareMinerals). The seller's name or business name is compared with the brand of the product it was found
   on and with the brands in its storefront's Brands menu, ignoring words like "Official", "Store", "Inc".
+- **Skipped**: stores that don't sell any well-known brand (none of the brands seen on the product they
+  were found on or in their storefront's Brands menu is in `brands.txt` or your `my-brands.txt`). Nothing
+  is written to the shared list for these, since the list may just be missing a brand. Add brands under
+  **Well-known brands** in the app.
 - **Already have this number** / **No US phone** / **no phone**: nothing is written.
 
 Amazon leads are not added to the shared Leads inbox. The app never deletes or changes rows in the
