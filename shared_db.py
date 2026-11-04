@@ -108,7 +108,8 @@ def record_seller(row: dict, get_store=None) -> str:
 
     Returns "new_lead", "rejected" (breaks a rule in rules.py: banned in both apps), "skipped" (no
     well-known brands: not a lead, but nothing is written), "known" (already have this number),
-    "no_us_phone", or "no_phone". The check against `numbers` happens right now, not from a cached
+    "bad_number" (no valid US number), "no_us_phone", or "no_phone".
+    The phone and US-seller checks come first, so a store's storefront is only read when needed. The check against `numbers` happens right now, not from a cached
     copy. `get_store` (called only for would-be new leads) returns the storefront's
     (departments, brands), each None when they couldn't be read.
     """
@@ -120,10 +121,25 @@ def record_seller(row: dict, get_store=None) -> str:
         return "no_us_phone"
     if any(is_known(n) for n in us):
         return "known"
+    valid = rules.valid_us_numbers(row)
+    if not valid:
+        row["reason"] = rules.BAD_NUMBER_REASON
+        return "bad_number"
+    us = valid
+    details = details_for(row)
+    not_us = rules.not_us_seller(row)
+    if not_us:
+        for n in us:
+            add_number(n, f"Rejected: {not_us} · {details}", SOURCE_REJECTED)
+        row["reason"] = not_us
+        return "rejected"
+    unknown = rules.no_country(row)
+    if unknown:
+        row["reason"] = unknown
+        return "skipped"
     departments, brands = get_store() if get_store else (None, None)
     if departments:
         row["store_mix"] = " · ".join(departments)
-    details = details_for(row)
     reason = rules.violation(row, departments, brands)
     if reason:
         # A real reason about the seller: saved as rejected so both apps skip it from now on.

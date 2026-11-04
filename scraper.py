@@ -258,6 +258,7 @@ def discover_from_asins(b: Browser, asins: list[str]) -> list[str]:
     return [sid for *_, new in iter_product_sellers(b, asins) for sid in new]
 
 
+MAX_STORE_PAGES = 100  # most pages read from one store's storefront ("All")
 ALL_PAGES = 0
 MAX_PAGES = 50  # safety cap for "all pages"
 
@@ -297,7 +298,7 @@ def discover_from_search(b: Browser, query: str, pages: int) -> list[str]:
 
 
 STATUS_TEXT = {
-    "new_lead": "NEW LEAD", "rejected": "BANNED", "skipped": "SKIPPED", "known": "already have this number", "no_us_phone": "no US phone",
+    "new_lead": "NEW LEAD", "rejected": "BANNED", "skipped": "SKIPPED", "bad_number": "NOT A VALID US NUMBER", "known": "already have this number", "no_us_phone": "no US phone",
     "no_phone": "no phone", "not_found": "store not found", "captcha": "blocked by Amazon",
     "db_error": "couldn't reach the shared list",
 }
@@ -311,8 +312,9 @@ class SellerChecker:
     """
 
     def __init__(self, b: Browser, out: Path, on_progress=None, shared: bool = False, limit: int = 0,
-                 on_status=None):
+                 on_status=None, store_pages: int = MAX_STORE_PAGES):
         self.b, self.out, self.on_progress, self.shared = b, out, on_progress, shared
+        self.store_pages = max(1, min(MAX_STORE_PAGES, store_pages))  # storefront pages read per store
         self.on_status = on_status  # called with (seller_id, status) after each store
         self.limit = limit  # stop once this many new leads are found (0 = no limit)
         upgrade_columns(out)
@@ -384,18 +386,35 @@ class SellerChecker:
         self._report()
 
     def storefront(self, sid: str) -> tuple[list[str] | None, list[str] | None]:
-        """What the store sells, from its storefront's Department and Brands menus
-        (each None when it couldn't be read)."""
+        """What the store sells: departments (Department menu) and brands (Brands menu, when Amazon
+        shows one, plus the start of every product name), reading up to `store_pages` pages of its
+        storefront. Each is None when it couldn't be read."""
         b = self.b
-        html = b.get(f"https://{b.domain}/s?me={sid}", name=f"store-{sid}",
-                     wait_for="#departments, [data-asin]")
-        departments = parse_departments(html) if html else []
-        # The Brands menu only shows for stores in one department; product names work for every store.
-        brands = parse_brands(html) if html else []
-        if html:
-            for brand in brands_from_titles(parse_result_titles(html), brand_list.names()):
-                if brand not in brands:
-                    brands.append(brand)
+        departments: list[str] = []
+        brands: list[str] = []
+        titles: list[str] = []
+        pages_read = 0
+        for p in range(1, self.store_pages + 1):
+            html = b.get(f"https://{b.domain}/s?me={sid}&page={p}", name=f"store-{sid}-{p}",
+                         wait_for="#departments, [data-asin]")
+            if not html:
+                break
+            page_titles = parse_result_titles(html)
+            if p == 1:
+                departments = parse_departments(html)
+                # The Brands menu only shows for stores in one department.
+                brands = parse_brands(html)
+            new_titles = [t for t in page_titles if t not in titles]
+            if p > 1 and not new_titles:
+                break
+            titles += new_titles
+            pages_read = p
+            if not has_next_page(html):
+                break
+        for brand in brands_from_titles(titles, brand_list.names()):
+            if brand not in brands:
+                brands.append(brand)
+        b.log(f"    Store: {pages_read} page{'s' * (pages_read != 1)}, {len(titles)} products")
         b.log(f"    Sells: {', '.join(departments) if departments else 'could not read departments'}"
               f" | Brands: {', '.join(brands[:8]) + (' …' if len(brands) > 8 else '') if brands else 'none listed'}")
         return departments or None, brands or None

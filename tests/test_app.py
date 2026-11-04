@@ -15,7 +15,7 @@ def env(tmp_path, monkeypatch):
         monkeypatch.setattr(app, name, tmp_path / getattr(app, name).name)
     rows = []
     for i, sid in enumerate(["A1BOOKS", "A2TOYS", "A3OLD"]):
-        r = {"seller_id": sid, "status": "new_lead", "seller_name": sid, "phones": f"+1 512-555-010{i}",
+        r = {"seller_id": sid, "status": "new_lead", "seller_name": sid, "phones": f"+1 512-555-010{i}", "country": "US",
              "scraped_at": f"2026-11-02T10:0{i}:00+00:00"}
         shared_db.add_number(shared_db.normalize_phone(r["phones"]), sid)
         rows.append(r)
@@ -67,3 +67,31 @@ def test_recheck_applies_new_rules_to_waiting_leads(env, monkeypatch):
     assert app.leads_to_recheck(everything=False) == []
     monkeypatch.setattr(rules, "RULES_VERSION", rules.RULES_VERSION + 1)
     assert [r["seller_id"] for r in app.leads_to_recheck(everything=False)] == ["A2TOYS"]
+
+
+def test_storefront_reads_every_page_until_the_last(env):
+    def page(n, last=False):
+        cards = "".join(f'<div data-component-type="s-search-result"><h2 aria-label="{t}"></h2></div>'
+                        for t in {1: ["LEGO Classic Bricks", "XIJIAOYAN Phone Case"], 2: ["Mattel Barbie Doll"],
+                                  3: ["Hasbro Monopoly Game"]}[n])
+        nxt = ('<span class="s-pagination-next s-pagination-disabled">Next</span>' if last
+               else '<a class="s-pagination-next" href="#">Next</a>')
+        dept = '<div id="departments"><ul><li><span>Toys &amp; Games</span></li></ul></div>' if n == 1 else ""
+        return dept + cards + nxt
+
+    class FakeBrowser:
+        domain = "www.amazon.com"
+        visited = []
+        def get(self, url, name="", wait_for=None):
+            n = int(url.split("page=")[1]); self.visited.append(n)
+            return page(n, last=n == 3)
+        def log(self, msg): pass
+
+    b = FakeBrowser()
+    departments, brands = scraper.SellerChecker(b, app.LEADS, store_pages=100).storefront("A1")
+    assert b.visited == [1, 2, 3]                       # stopped at the store's last page
+    assert departments == ["Toys & Games"]
+    assert brands == ["LEGO", "XIJIAOYAN", "Mattel", "Hasbro"]
+    b.visited.clear()
+    scraper.SellerChecker(b, app.LEADS, store_pages=1).storefront("A1")
+    assert b.visited == [1]                             # "Store pages to read: 1"

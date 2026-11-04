@@ -38,19 +38,21 @@ def test_skip_reason():
 
 def test_skipped_store_writes_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(shared_db, "DB_FILE", tmp_path / "numbers.db")
-    row = {"seller_name": "Cheap Stuff 4U", "phones": "+1 512-555-0100", "found_brand": "XIJIAOYAN"}
+    row = {"seller_name": "Cheap Stuff 4U", "phones": "+1 512-555-0100", "found_brand": "XIJIAOYAN", "country": "US"}
     assert shared_db.record_seller(row, get_store=lambda: (["Home & Kitchen"], ["XIJIAOYAN"])) == "skipped"
     assert row["reason"] == "No well-known brands"
     con = sqlite3.connect(tmp_path / "numbers.db")
     assert con.execute("SELECT COUNT(*) FROM numbers").fetchone()[0] == 0
     # a reseller of a known brand is still a lead
-    row2 = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "XIJIAOYAN"}
+    row2 = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "XIJIAOYAN", "country": "US"}
     assert shared_db.record_seller(row2, get_store=lambda: (["Toys & Games"], ["Hasbro"])) == "new_lead"
 
 
 def test_approval_notes_say_why():
-    notes = rules.approval_notes({"found_brand": "XIJIAOYAN"}, ["Toys & Games", "Baby"], ["Hasbro", "Generic", "Mattel"])
-    assert notes == ("New US number (not in the shared list) · Sells well-known brands: Hasbro, Mattel · "
+    notes = rules.approval_notes({"found_brand": "XIJIAOYAN", "country": "US"}, ["Toys & Games", "Baby"],
+                                 ["Hasbro", "Generic", "Mattel"])
+    assert notes == ("Valid US phone number, not in the shared list · US business address · "
+                     "Sells well-known brands: Hasbro, Mattel · "
                      "Not just books/movies/music/games (sells Toys & Games, Baby) · Not its own brand")
     blind = rules.approval_notes({}, None, None)
     assert "Brands couldn't be read (kept)" in blind and "Departments couldn't be read (kept)" in blind
@@ -59,9 +61,11 @@ def test_approval_notes_say_why():
 
 def test_new_lead_row_gets_its_note(tmp_path, monkeypatch):
     monkeypatch.setattr(shared_db, "DB_FILE", tmp_path / "numbers.db")
-    row = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "LEGO"}
+    row = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "LEGO",
+           "business_address": "1 Main St, Austin, TX, 78701, US"}
     assert shared_db.record_seller(row, get_store=lambda: (["Toys & Games"], ["LEGO"])) == "new_lead"
-    assert row["approved_why"].startswith("New US number (not in the shared list) · Sells well-known brands: LEGO")
+    assert row["approved_why"].startswith("Valid US phone number, not in the shared list · "
+                                          "US business address · Sells well-known brands: LEGO")
 
 
 STOREFRONT = """<div id="departments"><ul><li><span>Beauty &amp; Personal Care</span></li><li><span>Toys &amp; Games</span></li></ul></div>
@@ -84,3 +88,45 @@ def test_brands_from_storefront_product_names():
     # a brand owner whose products all carry its name
     own = brands_from_titles(["Sassy Fishy Fascination Station", "Sassy Stacks of Circles"], brand_list.names())
     assert rules.violation({"seller_name": "Sassy"}, ["Baby"], own) == "Sells its own brand (Sassy)"
+
+
+
+def test_phone_must_be_a_valid_us_number():
+    assert rules.valid_us_numbers({"phones": "+1 713-817-5533"}) == ["7138175533"]
+    assert rules.valid_us_numbers({"phones": "+1 123-456-7890 | +1 999-123-4567"}) == []   # made up
+    assert rules.valid_us_numbers({"phones": "+1 416-979-2000"}) == []                     # Toronto, Canada
+    assert rules.valid_us_numbers({"phones": "+1 416-979-2000 | (713) 817-5533"}) == ["7138175533"]
+
+
+def test_us_seller_checked_before_the_store_is_opened(tmp_path, monkeypatch):
+    monkeypatch.setattr(shared_db, "DB_FILE", tmp_path / "numbers.db")
+    opened = []
+    store = lambda: opened.append(1) or (["Toys & Games"], ["LEGO"])
+    fake = {"seller_name": "Fake Co", "phones": "+1 123-456-7890"}
+    assert shared_db.record_seller(fake, get_store=store) == "bad_number"
+    canada = {"seller_name": "Maple Toys", "phones": "+1 416-979-2000"}
+    assert shared_db.record_seller(canada, get_store=store) == "bad_number"
+    abroad = {"seller_name": "Far Away Ltd", "phones": "+1 713-817-5533", "country": "CN"}
+    assert shared_db.record_seller(abroad, get_store=store) == "rejected"
+    assert abroad["reason"] == "Not a US seller (business address in CN)"
+    assert opened == []  # none of these needed their storefront read
+    assert shared_db.lookup(["7138175533"]) == {"7138175533": "Rejected by Amazon app"}
+    us = {"seller_name": "Toy Depot", "phones": "+1 917-592-1495", "country": "US"}  # same page as the phone
+    assert shared_db.record_seller(us, get_store=store) == "new_lead" and opened == [1]
+
+
+
+def test_address_must_be_in_the_us():
+    assert rules.address_country({"business_address": "535 Luling St, Pearl, MS, 39208, US"}) == "US"
+    assert rules.address_country({"country": "cn"}) == "CN"
+    assert rules.not_us_seller({"business_address": "Bao'an District, Shenzhen, Guangdong, 518000, CN"}) \
+        == "Not a US seller (business address in CN)"
+    assert rules.not_us_seller({"business_address": "1 Main St, Austin, TX, 78701, US"}) is None
+    assert rules.no_country({"business_address": "1 Main St, Austin"}) == "Business address country couldn't be read"
+
+
+def test_unreadable_country_is_skipped_not_banned(tmp_path, monkeypatch):
+    monkeypatch.setattr(shared_db, "DB_FILE", tmp_path / "numbers.db")
+    row = {"seller_name": "Mystery Co", "phones": "+1 917-592-1495", "business_address": "PO Box 7"}
+    assert shared_db.record_seller(row, get_store=lambda: (["Toys & Games"], ["LEGO"])) == "skipped"
+    assert shared_db.lookup(["9175921495"]) == {}  # nothing written

@@ -6,14 +6,62 @@ an update), the app re-checks the leads still waiting in the list with the new r
 
 from __future__ import annotations
 
+import phonenumbers
+
 import brand_list
 from seller_parser import is_media_only, same_name
 
-RULES_VERSION = 5  # 5: brands are also read from the product names on the storefront
+RULES_VERSION = 6  # 6: valid US phone number and US business address are required
 
 MEDIA_ONLY_REASON = "Only sells books, movies, music & video games"
 OWN_BRAND_REASON = "Sells its own brand"
 NO_BRANDS_REASON = "No well-known brands"
+BAD_NUMBER_REASON = "Phone isn't a valid US number"
+US_REGIONS = {"US", "PR", "VI", "GU", "AS", "MP"}  # the US and its territories
+
+
+def valid_us_numbers(row: dict) -> list[str]:
+    """The seller's phone numbers that are real, dialable-format US numbers (10 digits, no +1).
+
+    This catches made-up numbers (123-456-7890), Canadian and Caribbean numbers that look like US
+    ones, and impossible area codes. It can't tell whether a number is connected: that needs a paid
+    phone-lookup service."""
+    out = []
+    for raw in (row.get("phones") or "").split(" | "):
+        try:
+            num = phonenumbers.parse(raw, "US")
+        except phonenumbers.NumberParseException:
+            continue
+        if phonenumbers.is_valid_number(num) and phonenumbers.region_code_for_number(num) in US_REGIONS:
+            digits = str(num.national_number)
+            if len(digits) == 10 and digits not in out:
+                out.append(digits)
+    return out
+
+
+NO_COUNTRY_REASON = "Business address country couldn't be read"
+
+
+def address_country(row: dict) -> str:
+    """The two-letter country at the end of the seller page's business address ("…, TX, 77503, US")."""
+    country = (row.get("country") or "").strip().upper()
+    if not country:
+        last = (row.get("business_address") or "").split(",")[-1].strip().upper()
+        country = last if len(last) == 2 and last.isalpha() else ""
+    return country
+
+
+def not_us_seller(row: dict) -> str | None:
+    """A real reason about the seller: its business address is outside the US."""
+    country = address_country(row)
+    if country and country != "US":
+        return f"Not a US seller (business address in {country})"
+    return None
+
+
+def no_country(row: dict) -> str | None:
+    """Softer: the address shows no country, so the seller can't be confirmed as a US seller."""
+    return None if address_country(row) else NO_COUNTRY_REASON
 
 
 def violation(row: dict, departments: list[str] | None, brands: list[str] | None = None) -> str | None:
@@ -50,7 +98,8 @@ def skip_reason(row: dict, brands: list[str] | None) -> str | None:
 
 def approval_notes(row: dict, departments: list[str] | None, brands: list[str] | None) -> str:
     """Why a store that passed every rule is a lead, one short note per check (shown with the lead)."""
-    notes = ["New US number (not in the shared list)"]
+    notes = ["Valid US phone number, not in the shared list"]
+    notes.append("US business address")
     seen = [b for b in [row.get("found_brand", "")] + list(brands or []) if b]
     known = brand_list.load()
     well_known = list(dict.fromkeys(b for b in seen if brand_list.is_well_known(b, known)))

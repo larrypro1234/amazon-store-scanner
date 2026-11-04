@@ -94,6 +94,9 @@
           border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-weight: 600; }
   .spot span { flex: 1; }
   details.brands { margin-top: 14px; }
+  .past-list { max-height: 240px; overflow: auto; margin-top: 8px; }
+  .past-list table { font-size: 13px; }
+  .past-list td, .past-list th { padding: 5px 8px; }
   details.brands summary { cursor: pointer; font-weight: 600; font-size: 14px; }
   details.brands textarea { min-height: 110px; margin-top: 8px; }
   .err { color: var(--bad); font-size: 14px; margin-top: 10px; min-height: 1em; }
@@ -123,8 +126,8 @@
       <div id="mode-search">
         <div class="row">
           <div>
-            <label for="query">What to search for</label>
-            <input type="text" id="query" placeholder="e.g. phone case, dog toys, led lights">
+            <label for="query">Brands or searches <span class="small">(one per line — paste as many as you like)</span></label>
+            <textarea id="query" rows="4" placeholder="e.g.&#10;LEGO&#10;Mattel&#10;Neutrogena"></textarea>
           </div>
           <div>
             <label for="pages">Pages</label>
@@ -136,12 +139,30 @@
           </div>
         </div>
         <p class="hint" id="pages-hint">1 page ≈ 50 products ≈ 50–150 stores ≈ 20–30 minutes.</p>
+        <label class="check" style="margin-top:8px"><input type="checkbox" id="skip-done" checked>
+          Skip ones I've already scanned</label>
+        <details class="brands" id="past">
+          <summary>Past searches <span class="small" id="past-count"></span></summary>
+          <div class="past-list" id="past-list"><p class="hint">None yet.</p></div>
+        </details>
       </div>
 
       <div id="mode-links" hidden>
         <label for="links">Store links (one per line)</label>
         <textarea id="links" placeholder="https://www.amazon.com/sp?seller=..."></textarea>
         <p class="hint">About 5–10 seconds per store.</p>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div><label for="store-pages">Store pages to read</label>
+          <p class="hint" style="margin:0">How much of each possible lead's store to look through for its brands.
+            “All” reads every page (up to 100); Amazon usually shows at most ~20.</p></div>
+        <div>
+          <select id="store-pages">
+            <option value="1">1</option><option value="3">3</option><option value="10">10</option>
+            <option value="all" selected>All</option>
+          </select>
+        </div>
       </div>
 
       <div class="btns">
@@ -223,14 +244,15 @@ $("start").onclick = async () => {
   $("err").textContent = "";
   const res = await fetch("/api/scan", {
     method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({mode, query: $("query").value, pages: $("pages").value, links: $("links").value}),
+    body: JSON.stringify({mode, query: $("query").value, pages: $("pages").value, links: $("links").value,
+                          store_pages: $("store-pages").value, skip_done: $("skip-done").checked}),
   });
   const data = await res.json();
   if (!res.ok) { $("err").textContent = data.error; return; }
   lastDone = -1;
   startPolling();
 };
-$("query").onkeydown = e => { if (e.key === "Enter") $("start").click(); };
+$("query").onkeydown = e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) $("start").click(); };
 $("stop").onclick = () => fetch("/api/stop", {method: "POST"}).then(refreshStatus);
 $("filter").oninput = render;
 $("only-phones").onchange = render;
@@ -298,6 +320,7 @@ async function refreshStatus() {
   $("s-phones-label").textContent = rechecking ? "removed by re-check" : "new leads";
   // Reload the table while something runs, and once more when it finishes.
   if ((s.running && s.done !== lastDone) || (wasRunning && !s.running)) { lastDone = s.done; loadResults(); }
+  if (wasRunning && !s.running) loadSearches();
   wasRunning = s.running;
 }
 
@@ -309,7 +332,7 @@ async function loadResults() {
 const TAGS = {
   new_lead: ["New lead", "tag-new"], rejected: ["Banned{reason}", "tag-bad"], known: ["Already have this number", "tag-known"],
   no_us_phone: ["No US phone", "tag-known"], db_error: ["Not checked against shared list", "tag-bad"],
-  skipped: ["Skipped{reason}", "tag-known"],
+  skipped: ["Skipped{reason}", "tag-known"], bad_number: ["Not a valid US number", "tag-known"],
 };
 // Live status against the shared seller list, read each time the page loads.
 const SHARED_TAGS = {
@@ -436,8 +459,24 @@ $("save-brands").onclick = async () => {
   $("brands-saved").textContent = res.ok ? "Saved" : "Couldn't save";
   setTimeout(() => $("brands-saved").textContent = "", 2000);
   loadBrands();
+
 };
 loadBrands();
+
+async function loadSearches() {
+  try {
+    const list = await (await fetch("/api/searches")).json();
+    const done = new Set(list.filter(e => e.finished).map(e => e.query.toLowerCase()));
+    $("past-count").textContent = list.length ? `· ${done.size} done` : "";
+    $("past-list").innerHTML = list.length ? `<table><thead><tr><th>Search</th><th>When</th><th>Products</th>
+      <th>Stores</th><th>New leads</th><th></th></tr></thead><tbody>` + list.map(e => `<tr>
+      <td>${esc(e.query)}</td><td class="small">${esc(e.when)}</td><td>${e.products}</td>
+      <td>${e.stores_checked}</td><td>${e.new_leads}</td>
+      <td class="small">${e.finished ? "done" : "stopped part-way"}</td></tr>`).join("") + "</tbody></table>"
+      : '<p class="hint">None yet.</p>';
+  } catch {}
+}
+loadSearches();
 
 checkVersion();
 setInterval(checkVersion, 30 * 60 * 1000);

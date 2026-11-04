@@ -14,7 +14,8 @@ It ignores review text, so a number a customer typed in a review won't be picked
 Double-click **Start Scanner.command**. The first time, it sets itself up (a couple of minutes).
 Then a page opens in your browser where you can:
 
-- **Search Amazon** for a product word, or **paste store links**
+- **Search Amazon** for brands or product words (paste many, one per line), or **paste store links**.
+  Finished searches are remembered (**Past searches**) and skipped next time unless you untick the box.
 - Press **Start scan** and watch stores and phone numbers appear
 - Press **Stop** anytime (everything found so far is kept)
 - Filter the list, copy numbers, and **Download** a spreadsheet (all stores, or only ones with a phone)
@@ -44,6 +45,11 @@ the store is checked:
   were found on or in their storefront's Brands menu is in `brands.txt` or your `my-brands.txt`). Nothing
   is written to the shared list for these, since the list may just be missing a brand. Add brands under
   **Well-known brands** in the app.
+- Before a store is opened, its seller page must show a **valid US phone number** (not made up, not
+  Canadian) and a **US business address**. A business address in another country is banned like the
+  rules above; an address whose country can't be read is skipped.
+- **Store pages to read** sets how much of each possible lead's storefront is read for its brands
+  (default: every page, up to 100).
 - **Already have this number** / **No US phone** / **no phone**: nothing is written.
 
 Amazon leads are not added to the shared Leads inbox. The app never deletes or changes rows in the

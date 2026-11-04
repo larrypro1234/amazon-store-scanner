@@ -32,6 +32,7 @@ CLEARED = HERE / "cleared.json"  # stores whose lead was already downloaded: hid
 DELETED = HERE / "deleted.json"  # leads removed by hand or by a re-check: {seller_id: {when, reason}}
 RULES_CHECKED = HERE / "rules-checked.json"  # {seller_id: rules version the lead last passed}
 APPROVALS = HERE / "approvals.json"  # {seller_id: why it's a lead, from its latest re-check}
+SEARCHES = HERE / "searches.json"  # {"history": [one entry per search run, oldest first]}
 PORT = 8791  # first choice; another free port is used if something else has it
 RESTART_EXIT_CODE = 3  # tells the launcher loop to start the app again after an update
 
@@ -58,12 +59,14 @@ class Scan:
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def start(self, mode: str, query: str, pages: int, links: list[str], domain: str,
-              stop_after: int = 0) -> None:
+    def start(self, mode: str, query: list[str], pages: int, links: list[str], domain: str,
+              stop_after: int = 0, store_pages: int = scraper.MAX_STORE_PAGES, skip_done: bool = True) -> None:
         self.stop_requested = False
         self.done = self.total = self.phones = 0
         self.log_lines.clear()
-        self.thread = threading.Thread(target=self._run, args=(mode, query, pages, links, domain, stop_after),
+        self.thread = threading.Thread(target=self._run,
+                                       args=(mode, query, pages, links, domain, stop_after, store_pages,
+                                             skip_done),
                                        daemon=True)
         self.thread.start()
 
@@ -102,6 +105,14 @@ class Scan:
             for i, r in enumerate(waiting, 1):
                 sid = r["seller_id"]
                 self.log(f"Lead {i}/{len(waiting)} {r.get('seller_name') or sid}")
+                early = (rules.not_us_seller(r) or rules.no_country(r) or
+                         (None if rules.valid_us_numbers(r) else rules.BAD_NUMBER_REASON))
+                if early:  # no need to open the store
+                    mark_deleted(sid, f"Removed by re-check: {early}")
+                    removed += 1
+                    self.log(f"  REMOVED: {early}")
+                    self._progress(i, len(waiting), removed)
+                    continue
                 try:
                     departments, brands = checker.storefront(sid)
                 except scraper.Stopped:
@@ -135,7 +146,34 @@ class Scan:
                 except Exception:
                     pass
 
-    def _run(self, mode, query, pages, links, domain, stop_after=0) -> None:
+    def _search(self, b, checker, query, pages, domain, seen) -> None:
+        """One search, start to finish, saved in the search history (marked unfinished if stopped)."""
+        before_checked, before_new = checker.checked, checker.new_leads
+        products, finished = 0, False
+        try:
+            # One results page at a time: check its products' stores before loading the next page,
+            # so numbers show up as the scan goes.
+            for page_asins in scraper.iter_search_pages(b, query, pages):
+                for _, _, asin, title, brand, new_sellers in scraper.iter_product_sellers(b, page_asins, seen):
+                    products += 1
+                    checker.check(new_sellers, found_from=f'"{query}" search: {title}',
+                                  found_from_url=f"https://{domain}/dp/{asin}", keywords=query,
+                                  found_brand=brand)
+                    if checker.reached:
+                        return
+            finished = True
+        finally:
+            entry = {"query": query, "when": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                     "pages": "all" if pages == scraper.ALL_PAGES else pages, "products": products,
+                     "stores_checked": checker.checked - before_checked,
+                     "new_leads": checker.new_leads - before_new, "finished": finished}
+            update_json(SEARCHES, lambda d: d.setdefault("history", []).append(entry))
+            if finished:
+                self.log(f'Finished "{query}": {products} products, {entry["stores_checked"]} stores checked, '
+                         f'{entry["new_leads"]} new leads.')
+
+    def _run(self, mode, queries, pages, links, domain, stop_after=0, store_pages=scraper.MAX_STORE_PAGES,
+             skip_done=True) -> None:
         b = None
         try:
             self.phase = "finding"
@@ -143,23 +181,22 @@ class Scan:
             b = scraper.Browser(domain, headless=False, min_delay=4, max_delay=9, save_html=None,
                                 log=self.log, should_stop=lambda: self.stop_requested, hidden=True)
             checker = scraper.SellerChecker(b, LEADS, on_progress=self._progress, shared=True,
+                                            store_pages=store_pages,
                                             limit=stop_after, on_status=self._on_status)
             if stop_after:
                 self.log(f"Quick check: stops after {stop_after} new leads.")
             if mode == "search":
                 how_many = "all pages" if pages == scraper.ALL_PAGES else f'{pages} page{"s" * (pages > 1)}'
-                self.log(f'Searching Amazon for "{query}" ({how_many})')
                 self.phase = "checking"
-                seen: set[str] = set()
-                # One results page at a time: check its products' stores before loading the next page,
-                # so numbers show up as the scan goes.
-                for page_asins in scraper.iter_search_pages(b, query, pages):
-                    for _, _, asin, title, brand, new_sellers in scraper.iter_product_sellers(b, page_asins, seen):
-                        checker.check(new_sellers, found_from=f'"{query}" search: {title}',
-                                      found_from_url=f"https://{domain}/dp/{asin}", keywords=query,
-                                      found_brand=brand)
-                        if checker.reached:
-                            break
+                done = finished_searches() if skip_done else {}
+                seen: set[str] = set()  # sellers already looked at during this scan
+                for n, query in enumerate(queries, 1):
+                    earlier = done.get(search_key(query))
+                    if earlier:
+                        self.log(f'Skipping "{query}": already scanned on {earlier["when"]}.')
+                        continue
+                    self.log(f'Search {n}/{len(queries)}: "{query}" ({how_many})')
+                    self._search(b, checker, query, pages, domain, seen)
                     if checker.reached:
                         break
             else:
@@ -220,6 +257,19 @@ def mark_deleted(sid: str, reason: str) -> None:
     update_json(DELETED, lambda d: d.setdefault(sid, entry))
 
 
+def search_key(query: str) -> str:
+    return " ".join(query.lower().split())
+
+
+def finished_searches() -> dict[str, dict]:
+    """The latest finished run of every search, by search_key."""
+    out = {}
+    for e in load_json(SEARCHES).get("history", []):
+        if e.get("finished"):
+            out[search_key(e["query"])] = e
+    return out
+
+
 def leads_to_recheck(everything: bool) -> list[dict]:
     """Leads still waiting in the list; unless `everything`, only those checked under older rules."""
     checked = load_json(RULES_CHECKED)
@@ -262,18 +312,31 @@ def start_scan():
         return jsonify(error="A scan is already running."), 409
     body = request.get_json(force=True)
     mode = body.get("mode", "search")
-    query = (body.get("query") or "").strip()
+    queries = list(dict.fromkeys(q.strip() for q in (body.get("query") or "").splitlines() if q.strip()))
     links = [l.strip() for l in (body.get("links") or "").splitlines() if l.strip()]
     raw_pages = str(body.get("pages") or "1")
     pages = scraper.ALL_PAGES if raw_pages == "all" else max(1, min(20, int(raw_pages)))
     domain = body.get("domain") or "www.amazon.com"
-    if mode == "search" and not query:
+    if mode == "search" and not queries:
         return jsonify(error="Type what to search for."), 400
+    skip_done = bool(body.get("skip_done", True))
+    if mode == "search" and skip_done:
+        done = finished_searches()
+        if all(search_key(q) in done for q in queries):
+            return jsonify(error="You've already scanned all of these. Untick “Skip ones I've already "
+                                 "scanned” to scan them again."), 400
     if mode == "links" and not links:
         return jsonify(error="Paste at least one store link."), 400
     stop_after = max(0, min(1000, int(body.get("stop_after") or 0)))
-    scan.start(mode, query, pages, links, domain, stop_after)
+    raw_store_pages = str(body.get("store_pages") or "all")
+    store_pages = scraper.MAX_STORE_PAGES if raw_store_pages == "all" else int(raw_store_pages)
+    scan.start(mode, queries, pages, links, domain, stop_after, store_pages, skip_done)
     return jsonify(ok=True)
+
+
+@app.get("/api/searches")
+def searches():
+    return jsonify(list(reversed(load_json(SEARCHES).get("history", []))))
 
 
 @app.post("/api/recheck")
