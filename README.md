@@ -38,6 +38,8 @@ the store is checked:
   Also banned: stores that **sell their own brand** (the brand owner, e.g. the bareMinerals store selling
   bareMinerals). The seller's name or business name is compared with the brand of the product it was found
   on and with the brands in its storefront's Brands menu, ignoring words like "Official", "Store", "Inc".
+  A store's brands come from its storefront: the Brands menu when Amazon shows one (stores in one
+  department), and otherwise the start of each product name ("Old Spice Body Wash…" -> Old Spice).
 - **Skipped**: stores that don't sell any well-known brand (none of the brands seen on the product they
   were found on or in their storefront's Brands menu is in `brands.txt` or your `my-brands.txt`). Nothing
   is written to the shared list for these, since the list may just be missing a brand. Add brands under

@@ -21,10 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import brand_list
 import shared_db
 from seller_parser import (
-    SellerInfo, extract_asins, extract_seller_ids, has_next_page, is_captcha, parse_brands,
-    parse_departments, parse_product_brand, parse_seller_page,
+    SellerInfo, brands_from_titles, extract_asins, extract_seller_ids, has_next_page, is_captcha,
+    parse_brands, parse_departments, parse_product_brand, parse_result_titles, parse_seller_page,
 )
 
 CSV_FIELDS = ["seller_id", "status", "seller_name", "storefront_url", "profile_url", "business_name",
@@ -389,7 +390,12 @@ class SellerChecker:
         html = b.get(f"https://{b.domain}/s?me={sid}", name=f"store-{sid}",
                      wait_for="#departments, [data-asin]")
         departments = parse_departments(html) if html else []
+        # The Brands menu only shows for stores in one department; product names work for every store.
         brands = parse_brands(html) if html else []
+        if html:
+            for brand in brands_from_titles(parse_result_titles(html), brand_list.names()):
+                if brand not in brands:
+                    brands.append(brand)
         b.log(f"    Sells: {', '.join(departments) if departments else 'could not read departments'}"
               f" | Brands: {', '.join(brands[:8]) + (' …' if len(brands) > 8 else '') if brands else 'none listed'}")
         return departments or None, brands or None

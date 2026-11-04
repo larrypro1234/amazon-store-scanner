@@ -27,7 +27,25 @@ def read_list(path: Path) -> list[str]:
 
 
 def load() -> set[tuple[str, ...]]:
-    return {t for t in map(tokens, read_list(BUILT_IN) + read_list(MINE)) if t}
+    return set(names())
+
+
+def names() -> dict[tuple[str, ...], str]:
+    """Every listed brand, keyed by its tokens, with the name as written in the list."""
+    out: dict[tuple[str, ...], str] = {}
+    for name in read_list(BUILT_IN) + read_list(MINE):
+        out.setdefault(tokens(name), name)
+    out.pop((), None)
+    return out
+
+
+def brand_at_start(title: str, listed: dict[tuple[str, ...], str]) -> str | None:
+    """The listed brand a product name starts with ("L'Oreal Paris Shampoo…" -> "L'Oreal"), if any."""
+    t = tokens(title)
+    for n in range(min(5, len(t)), 0, -1):  # longest match first: "Hot Wheels" before "Hot"
+        if t[:n] in listed:
+            return listed[t[:n]]
+    return None
 
 
 def is_well_known(brand: str, known: set[tuple[str, ...]] | None = None) -> bool:

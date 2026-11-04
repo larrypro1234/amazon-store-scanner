@@ -123,6 +123,32 @@ def parse_brands(html: str) -> list[str]:
     return brands
 
 
+def parse_result_titles(html: str) -> list[str]:
+    """Product names on a search results page, such as a store's storefront."""
+    soup = BeautifulSoup(html, "html.parser")
+    titles = []
+    for h2 in soup.select("[data-component-type='s-search-result'] h2"):
+        text = h2.get("aria-label") or " ".join(h2.get_text(" ").split())
+        if text:
+            titles.append(text)
+    return titles
+
+
+def brands_from_titles(titles: list[str], listed: dict) -> list[str]:
+    """Brands of a store's products, read from the start of each product name. Well-known brands come
+    out with their listed name; other products give their first word ("XIJIAOYAN Phone Case" -> "XIJIAOYAN")."""
+    from brand_list import brand_at_start
+    out: list[str] = []
+    for title in titles:
+        brand = brand_at_start(title, listed)
+        if brand is None:
+            first = re.sub(r"[^\w'’&.-]+$", "", title.split()[0]) if title.split() else ""
+            brand = first if len(first) >= 2 else None
+        if brand and brand not in out:
+            out.append(brand)
+    return out
+
+
 def parse_product_brand(html: str) -> str:
     """The brand on a product page ("Visit the bareMinerals Store" / "Brand: bareMinerals")."""
     byline = BeautifulSoup(html, "html.parser").select_one("#bylineInfo")

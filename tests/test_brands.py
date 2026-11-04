@@ -62,3 +62,25 @@ def test_new_lead_row_gets_its_note(tmp_path, monkeypatch):
     row = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "LEGO"}
     assert shared_db.record_seller(row, get_store=lambda: (["Toys & Games"], ["LEGO"])) == "new_lead"
     assert row["approved_why"].startswith("New US number (not in the shared list) · Sells well-known brands: LEGO")
+
+
+STOREFRONT = """<div id="departments"><ul><li><span>Beauty &amp; Personal Care</span></li><li><span>Toys &amp; Games</span></li></ul></div>
+<div data-component-type="s-search-result"><h2 aria-label="Old Spice Body Wash for Men, 24 fl oz"><span>Old Spice Body Wash</span></h2></div>
+<div data-component-type="s-search-result"><h2 aria-label="L'Oreal Paris Sulfate Free Shampoo, 13.6 Fl Oz"><span>x</span></h2></div>
+<div data-component-type="s-search-result"><h2><span>XIJIAOYAN Phone Case for iPhone 15</span></h2></div>
+<div data-component-type="s-search-result"><h2 aria-label="Fisher-Price Classic Xylophone Pull Toy"><span>x</span></h2></div>"""
+
+
+def test_brands_from_storefront_product_names():
+    from seller_parser import brands_from_titles, parse_brands, parse_result_titles
+    titles = parse_result_titles(STOREFRONT)
+    assert titles[2] == "XIJIAOYAN Phone Case for iPhone 15" and len(titles) == 4
+    assert parse_brands(STOREFRONT) == []  # many-department stores have no Brands menu
+    brands = brands_from_titles(titles, brand_list.names())
+    assert brands == ["Old Spice", "L'Oreal", "XIJIAOYAN", "Fisher-Price"]
+    assert rules.skip_reason({}, brands) is None  # sells well-known brands
+    assert rules.skip_reason({}, brands_from_titles(["XIJIAOYAN Phone Case", "QWERTY Lamp"], brand_list.names())) \
+        == "No well-known brands"
+    # a brand owner whose products all carry its name
+    own = brands_from_titles(["Sassy Fishy Fascination Station", "Sassy Stacks of Circles"], brand_list.names())
+    assert rules.violation({"seller_name": "Sassy"}, ["Baby"], own) == "Sells its own brand (Sassy)"

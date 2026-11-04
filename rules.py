@@ -9,7 +9,7 @@ from __future__ import annotations
 import brand_list
 from seller_parser import is_media_only, same_name
 
-RULES_VERSION = 4  # 4: re-check also writes why each lead was approved
+RULES_VERSION = 5  # 5: brands are also read from the product names on the storefront
 
 MEDIA_ONLY_REASON = "Only sells books, movies, music & video games"
 OWN_BRAND_REASON = "Sells its own brand"
