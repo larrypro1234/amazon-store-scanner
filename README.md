@@ -49,6 +49,8 @@ shared database. On its first start it added the numbers it had found before (on
 
 ### Reviewing leads
 
+- Every new lead shows **Why it's a lead**: the checks it passed (new US number, the well-known brands it
+  sells, what departments it sells in, not its own brand), or what couldn't be checked. A re-check updates it.
 - **Delete** removes a lead from the list (the number stays in the shared list, so it never comes back).
   **Show deleted** shows them again, with **Undo delete**.
 - **Re-check leads** runs the current rules again on leads still waiting (not downloaded, not deleted).

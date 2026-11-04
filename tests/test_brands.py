@@ -46,3 +46,19 @@ def test_skipped_store_writes_nothing(tmp_path, monkeypatch):
     # a reseller of a known brand is still a lead
     row2 = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "XIJIAOYAN"}
     assert shared_db.record_seller(row2, get_store=lambda: (["Toys & Games"], ["Hasbro"])) == "new_lead"
+
+
+def test_approval_notes_say_why():
+    notes = rules.approval_notes({"found_brand": "XIJIAOYAN"}, ["Toys & Games", "Baby"], ["Hasbro", "Generic", "Mattel"])
+    assert notes == ("New US number (not in the shared list) · Sells well-known brands: Hasbro, Mattel · "
+                     "Not just books/movies/music/games (sells Toys & Games, Baby) · Not its own brand")
+    blind = rules.approval_notes({}, None, None)
+    assert "Brands couldn't be read (kept)" in blind and "Departments couldn't be read (kept)" in blind
+    assert "Own brand: couldn't check (kept)" in blind
+
+
+def test_new_lead_row_gets_its_note(tmp_path, monkeypatch):
+    monkeypatch.setattr(shared_db, "DB_FILE", tmp_path / "numbers.db")
+    row = {"seller_name": "Toy Depot", "phones": "+1 512-555-0101", "found_brand": "LEGO"}
+    assert shared_db.record_seller(row, get_store=lambda: (["Toys & Games"], ["LEGO"])) == "new_lead"
+    assert row["approved_why"].startswith("New US number (not in the shared list) · Sells well-known brands: LEGO")

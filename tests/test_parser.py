@@ -135,3 +135,21 @@ def test_own_brand_rule():
     # matched on the legal business name too
     assert rules.violation({"seller_name": "Shop 77", "business_name": "Lumi Toys LLC"}, None, ["Lumi Toys"]) \
         == "Sells its own brand (Lumi Toys)"
+
+
+def test_old_results_file_gets_new_columns_and_keeps_rows(tmp_path):
+    import csv
+    import scraper
+    out = tmp_path / "leads.csv"
+    old_header = ["seller_id", "status", "seller_name", "phones", "my_note"]
+    with out.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=old_header)
+        w.writeheader()
+        w.writerow({"seller_id": "A1", "status": "ok", "seller_name": "Old Shop", "phones": "+1 512-555-0100",
+                    "my_note": "keep me"})
+    scraper.upgrade_columns(out)
+    rows = list(csv.DictReader(out.open()))
+    assert rows == [rows[0]] and rows[0]["seller_name"] == "Old Shop" and rows[0]["my_note"] == "keep me"
+    assert {"reason", "approved_why", "store_mix"} <= set(rows[0])
+    scraper.upgrade_columns(out)  # already up to date: no change
+    assert list(csv.DictReader(out.open())) == rows

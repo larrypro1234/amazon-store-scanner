@@ -11,7 +11,7 @@ import shared_db
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(shared_db, "DB_FILE", tmp_path / "SellerFinderData" / "numbers.db")
-    for name in ("LEADS", "CLEARED", "DELETED", "RULES_CHECKED"):
+    for name in ("LEADS", "CLEARED", "DELETED", "RULES_CHECKED", "APPROVALS"):
         monkeypatch.setattr(app, name, tmp_path / getattr(app, name).name)
     rows = []
     for i, sid in enumerate(["A1BOOKS", "A2TOYS", "A3OLD"]):
@@ -61,6 +61,8 @@ def test_recheck_applies_new_rules_to_waiting_leads(env, monkeypatch):
     rows = by_id(env)
     assert rows["A1BOOKS"]["deleted"] == f"Removed by re-check: {rules.MEDIA_ONLY_REASON}"
     assert rows["A2TOYS"]["deleted"] == ""
+    assert "Sells well-known brands: Lego, Mattel" in rows["A2TOYS"]["approved_why"]
+    assert rows["A2TOYS"]["approved_why"].startswith("Re-checked ")
     # passed the current rules: not re-checked again until RULES_VERSION goes up
     assert app.leads_to_recheck(everything=False) == []
     monkeypatch.setattr(rules, "RULES_VERSION", rules.RULES_VERSION + 1)

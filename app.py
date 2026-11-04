@@ -31,6 +31,7 @@ LEADS = HERE / "leads.csv"
 CLEARED = HERE / "cleared.json"  # stores whose lead was already downloaded: hidden, never deleted
 DELETED = HERE / "deleted.json"  # leads removed by hand or by a re-check: {seller_id: {when, reason}}
 RULES_CHECKED = HERE / "rules-checked.json"  # {seller_id: rules version the lead last passed}
+APPROVALS = HERE / "approvals.json"  # {seller_id: why it's a lead, from its latest re-check}
 PORT = 8791  # first choice; another free port is used if something else has it
 RESTART_EXIT_CODE = 3  # tells the launcher loop to start the app again after an update
 
@@ -115,6 +116,9 @@ class Scan:
                     self.log(f"  REMOVED: {reason}")
                 elif departments is not None or brands is not None:  # unreadable store: try next time
                     update_json(RULES_CHECKED, lambda d: d.__setitem__(sid, rules.RULES_VERSION))
+                    why = f"Re-checked {datetime.now():%Y-%m-%d}: " + rules.approval_notes(r, departments, brands)
+                    update_json(APPROVALS, lambda d: d.__setitem__(sid, why))
+                    self.log(f"  OK: {why}")
                 self._progress(i, len(waiting), removed)
             self.log(f"Re-check done: {removed} of {len(waiting)} leads removed.")
             self.phase = "done"
@@ -237,8 +241,9 @@ def read_results() -> list[dict]:
             r["shared"] = shared_db.shared_state(r, sources)
     except Exception as e:
         print(f"Couldn't read the shared seller list: {e}")
-    cleared, deleted = load_cleared(), load_json(DELETED)
+    cleared, deleted, approvals = load_cleared(), load_json(DELETED), load_json(APPROVALS)
     for r in rows:
+        r["approved_why"] = approvals.get(r["seller_id"]) or r.get("approved_why", "")
         r["cleared"] = cleared.get(r["seller_id"], "")
         d = deleted.get(r["seller_id"]) or {}
         r["deleted"] = d.get("reason", "")
@@ -394,6 +399,10 @@ def update():
 
 
 if __name__ == "__main__":
+    try:
+        scraper.upgrade_columns(LEADS)  # older results files lack newer columns
+    except Exception as e:
+        print(f"Couldn't add new columns to {LEADS.name}: {e}")
     try:  # one time: numbers this app found before the shared database existed
         n = shared_db.import_once(LEADS, HERE / ".shared-db-imported")
         if n:

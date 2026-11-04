@@ -137,6 +137,7 @@ def record_seller(row: dict, get_store=None) -> str:
         return "skipped"
     for n in us:
         add_number(n, details)
+    row["approved_why"] = rules.approval_notes(row, departments, brands)
     return "new_lead"
 
 

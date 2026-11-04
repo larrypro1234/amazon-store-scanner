@@ -9,7 +9,7 @@ from __future__ import annotations
 import brand_list
 from seller_parser import is_media_only, same_name
 
-RULES_VERSION = 3
+RULES_VERSION = 4  # 4: re-check also writes why each lead was approved
 
 MEDIA_ONLY_REASON = "Only sells books, movies, music & video games"
 OWN_BRAND_REASON = "Sells its own brand"
@@ -46,3 +46,22 @@ def skip_reason(row: dict, brands: list[str] | None) -> str | None:
     if any(brand_list.is_well_known(b, known) for b in seen):
         return None
     return NO_BRANDS_REASON
+
+
+def approval_notes(row: dict, departments: list[str] | None, brands: list[str] | None) -> str:
+    """Why a store that passed every rule is a lead, one short note per check (shown with the lead)."""
+    notes = ["New US number (not in the shared list)"]
+    seen = [b for b in [row.get("found_brand", "")] + list(brands or []) if b]
+    known = brand_list.load()
+    well_known = list(dict.fromkeys(b for b in seen if brand_list.is_well_known(b, known)))
+    if well_known:
+        more = f" +{len(well_known) - 3} more" if len(well_known) > 3 else ""
+        notes.append(f"Sells well-known brands: {', '.join(well_known[:3])}{more}")
+    else:
+        notes.append("Brands couldn't be read (kept)")
+    if departments:
+        notes.append(f"Not just books/movies/music/games (sells {', '.join(departments[:3])})")
+    else:
+        notes.append("Departments couldn't be read (kept)")
+    notes.append("Not its own brand" if seen else "Own brand: couldn't check (kept)")
+    return " · ".join(notes)

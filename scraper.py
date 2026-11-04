@@ -29,7 +29,7 @@ from seller_parser import (
 
 CSV_FIELDS = ["seller_id", "status", "seller_name", "storefront_url", "profile_url", "business_name",
               "phones", "phone_source", "emails", "business_address", "country", "positive_pct",
-              "rating_count", "stars", "store_mix", "found_from", "found_brand", "reason", "extra_fields", "about_text",
+              "rating_count", "stars", "store_mix", "found_from", "found_brand", "reason", "approved_why", "extra_fields", "about_text",
               "scraped_at"]
 
 PROFILE_DIR = Path(__file__).parent / ".browser-profile"
@@ -177,6 +177,27 @@ def to_seller_id(s: str) -> str:
     return ids[0] if ids else s
 
 
+def upgrade_columns(out: Path) -> None:
+    """Results files made by older versions lack newer columns, and rows written to them would drop
+    those values. Rewrite the file once with every current column, keeping all rows and old columns."""
+    if not out.exists() or out.stat().st_size == 0:
+        return
+    with out.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        header = reader.fieldnames or []
+        missing = [c for c in CSV_FIELDS if c not in header]
+        if not missing:
+            return
+        rows = list(reader)
+    fields = CSV_FIELDS + [c for c in header if c not in CSV_FIELDS]
+    tmp = out.with_suffix(".upgrading")
+    with tmp.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    tmp.replace(out)
+
+
 def already_done(out: Path) -> set[str]:
     if not out.exists():
         return set()
@@ -293,6 +314,7 @@ class SellerChecker:
         self.b, self.out, self.on_progress, self.shared = b, out, on_progress, shared
         self.on_status = on_status  # called with (seller_id, status) after each store
         self.limit = limit  # stop once this many new leads are found (0 = no limit)
+        upgrade_columns(out)
         self.skip = already_done(out)
         self.queued = self.checked = self.with_phone = self.new_leads = self.skipped = 0
 

@@ -82,7 +82,8 @@
   .tag-new { background: var(--accent-soft); color: var(--accent); }
   .tag-known { background: var(--bg); color: var(--muted); }
   .tag-bad { color: var(--bad); }
-  .del { color: var(--bad); }
+  .copy.del { color: var(--bad); }
+  .why { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; max-width: 260px; }
   .copy { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; }
   .none { color: var(--muted); }
   .small { color: var(--muted); font-size: 12px; }
@@ -352,7 +353,9 @@ function render() {
     if (t) t = [t[0].replace("{reason}", r.reason ? `: ${r.reason}` : ""), t[1]];
     const tag = (t ? `<br><span class="tag ${t[1]}">${esc(t[0])}</span>` : "") +
       (r.cleared ? `<br><span class="tag tag-known">Downloaded ${esc(r.cleared)}</span>` : "") +
-      (r.deleted ? `<br><span class="tag tag-bad">${esc(r.deleted)} · ${esc(r.deleted_when)}</span>` : "");
+      (r.deleted ? `<br><span class="tag tag-bad">${esc(r.deleted)} · ${esc(r.deleted_when)}</span>` : "") +
+      (r.approved_why && r.shared?.state === "new" && !r.deleted
+        ? `<div class="why"><b>Why it's a lead:</b><br>${r.approved_why.split(" · ").map(n => "✓ " + esc(n)).join("<br>")}</div>` : "");
     const action = r.deleted
       ? `<br><button class="copy" data-restore="${esc(r.seller_id)}">Undo delete</button>`
       : `<br><button class="copy del" data-delete="${esc(r.seller_id)}" title="Remove this seller from the list">Delete</button>`;
